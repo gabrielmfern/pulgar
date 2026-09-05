@@ -11,6 +11,7 @@ node_modules/
 dist/
 !vendor/node
 vendor/xwin/
+.xwin-cache/
 vendor/macos-sdk/
 shim.dylib*
 shim.dll
