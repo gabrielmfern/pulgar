@@ -878,47 +878,12 @@ NULL_TIMEOUT: s64: -1;
 
 matcher: napi_value;
 negated_matcher: napi_value;
-register_assertion :: (name: string, $message: string, $negated_message: string, $check: Code) {
-    create_assertion :: ($check: Code, $message: string, $negated: bool) -> napi_callback {
-        callback :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
-            push_context test_context {
-                assert(test_name_breadcrumb.count > 0);
-
-                argc: u64 = 1;
-                expected: napi_value;
-                napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
-
-                actual: napi_value;
-                napi_try(napi_get_named_property(env, matcher, "actual".data, *actual));
-
-                passes: bool = true;
-                #insert,scope() check;
-
-                if passes == negated {
-                    actual_inspected: napi_value;
-                    napi_try(napi_call_function(env, napi_global, testa_inspect_fn, 1, *actual, *actual_inspected));
-                    actual_inspected_string := string_from_napi_value(actual_inspected);
-
-                    expected_inspected: napi_value;
-                    napi_try(napi_call_function(env, napi_global, testa_inspect_fn, 1, *expected, *expected_inspected));
-                    expected_inspected_string := string_from_napi_value(expected_inspected);
-
-                    builder: String_Builder;
-                    print_to_builder(*builder, message, actual_inspected_string, expected_inspected_string);
-                    append(*builder, 0);
-                    napi_try(napi_throw_error(env, null, builder_to_string(*builder).data));
-                }
-            }
-            return null;
-        }
-        return callback;
-    }
-
+register_assertion :: (name: string, callback: napi_callback, negated_callback: napi_callback) {
     fn: napi_value;
-    napi_check(napi_create_function(napi_env_instance, name.data, xx name.count, create_assertion(check, message, negated = false), null, *fn));
+    napi_check(napi_create_function(napi_env_instance, name.data, xx name.count, callback, null, *fn));
     napi_check(napi_set_named_property(napi_env_instance, matcher, name.data, fn));
 
-    napi_check(napi_create_function(napi_env_instance, name.data, xx name.count, create_assertion(check, negated_message, negated = true), null, *fn));
+    napi_check(napi_create_function(napi_env_instance, name.data, xx name.count, negated_callback, null, *fn));
     napi_check(napi_set_named_property(napi_env_instance, negated_matcher, name.data, fn));
 }
 
@@ -1428,17 +1393,116 @@ main :: () {
             napi_check(napi_create_object(napi_env_instance, *matcher));
             napi_check(napi_create_object(napi_env_instance, *negated_matcher));
 
-            register_assertion("toBe", message="expected % to be %", negated_message="expceted % not to be %", #code {
-                if !object_is(env, actual, expected) {
-                    passes = false;
-                }
-            });
+            inspect :: (env: napi_env, value: napi_value) -> string #expand {
+                inspected: napi_value;
+                napi_try(napi_call_function(env, napi_global, testa_inspect_fn, 1, *value, *inspected));
+                return string_from_napi_value(inspected);
+            }
 
-            register_assertion("toEqual", message="expected % to equal %", negated_message="expceted % not to equal %", #code {
-                if !deep_equal(env, actual, expected, null) {
-                    passes = false;
+            throw_error :: (env: napi_env, message: string, args: ..Any) #expand {
+                builder: String_Builder;
+                print_to_builder(*builder, message, ..args);
+                append(*builder, 0);
+                napi_try(napi_throw_error(env, null, builder_to_string(*builder).data));
+            }
+
+            to_be :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    actual: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *actual));
+                    argc: u64 = 1;
+                    expected: napi_value;
+                    napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
+
+                    if !object_is(env, actual, expected) {
+                        throw_error(env, "expected % to be %", inspect(env, actual), inspect(env, expected));
+                    }
                 }
-            });
+                return null;
+            }
+
+            not_to_be :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    actual: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *actual));
+                    argc: u64 = 1;
+                    expected: napi_value;
+                    napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
+
+                    if object_is(env, actual, expected) {
+                        throw_error(env, "expected % not to be %", inspect(env, actual), inspect(env, expected));
+                    }
+                }
+                return null;
+            }
+
+            to_equal :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    actual: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *actual));
+                    argc: u64 = 1;
+                    expected: napi_value;
+                    napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
+
+                    if !deep_equal(env, actual, expected, null) {
+                        throw_error(env, "expected % to equal %", inspect(env, actual), inspect(env, expected));
+                    }
+                }
+                return null;
+            }
+
+            not_to_equal :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    actual: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *actual));
+                    argc: u64 = 1;
+                    expected: napi_value;
+                    napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
+
+                    if deep_equal(env, actual, expected, null) {
+                        throw_error(env, "expected % not to equal %", inspect(env, actual), inspect(env, expected));
+                    }
+                }
+                return null;
+            }
+
+            to_be_null :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    actual: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *actual));
+
+                    type: napi_valuetype;
+                    napi_try(napi_typeof(env, actual, *type));
+                    if type != .napi_null {
+                        throw_error(env, "expected % to be null", inspect(env, actual));
+                    }
+                }
+                return null;
+            }
+
+            not_to_be_null :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    actual: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *actual));
+
+                    type: napi_valuetype;
+                    napi_try(napi_typeof(env, actual, *type));
+                    if type == .napi_null {
+                        throw_error(env, "expected % not to be null", inspect(env, actual));
+                    }
+                }
+                return null;
+            }
+
+            register_assertion("toBe", to_be, not_to_be);
+            register_assertion("toEqual", to_equal, not_to_equal);
+            register_assertion("toBeNull", to_be_null, not_to_be_null);
 
             napi_check(napi_set_named_property(napi_env_instance, matcher, "not".data, negated_matcher));
         }
