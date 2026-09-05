@@ -17,7 +17,7 @@ build :: () {
 
     set_build_options_dc(.{do_output=false});
 
-    libnode_dir :: "vendor/node/out/Release/lib";
+    libnode_dir :: #ifx OS == .MACOS then "vendor/node/out/Release" else "vendor/node/out/Release/lib";
     // Executable + the shared libraries it needs at runtime, side by side.
     #if OS == .WINDOWS {
         platform :: "win32";
