@@ -1533,7 +1533,44 @@ main :: () {
                 }
                 return null;
             }
-            register_assertion("toBeNull", to_be_null, not_to_be_null);
+            register_assertion("toBeUndefined", to_be_undefined, not_to_be_undefined);
+            register_assertion("toBeDefined", not_to_be_undefined, to_be_undefined);
+
+            to_be_truthy :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    actual: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *actual));
+
+                    coerced: napi_value;
+                    napi_try(napi_coerce_to_bool(env, actual, *coerced));
+                    truthy: bool;
+                    napi_try(napi_get_value_bool(env, coerced, *truthy));
+                    if !truthy {
+                        throw_error(env, "expected % to be truthy", inspect(env, actual));
+                    }
+                }
+                return null;
+            }
+
+            to_be_falsy :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    actual: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *actual));
+
+                    coerced: napi_value;
+                    napi_try(napi_coerce_to_bool(env, actual, *coerced));
+                    truthy: bool;
+                    napi_try(napi_get_value_bool(env, coerced, *truthy));
+                    if truthy {
+                        throw_error(env, "expected % to be falsy", inspect(env, actual));
+                    }
+                }
+                return null;
+            }
+            register_assertion("toBeTruthy", to_be_truthy, to_be_falsy);
+            register_assertion("toBeFalsy", to_be_falsy, to_be_truthy);
 
             napi_check(napi_set_named_property(napi_env_instance, matcher, "not".data, negated_matcher));
         }

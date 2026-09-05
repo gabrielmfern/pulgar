@@ -40,6 +40,11 @@ type Assertions<T> = {
     */
   toBe(expected: T): void;
   toEqual(expected: unknown): void;
+  toBeNull(): void;
+  toBeUndefined(): void;
+  toBeDefined(): void;
+  toBeTruthy(): void;
+  toBeFalsy(): void;
 };
 
 declare function expect<T>(received: T): {

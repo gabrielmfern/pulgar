@@ -23,11 +23,11 @@ TO-DO list for public launch:
     - [x] Also print the test summary if the user presses SIGINT
     - [x] `expect.toEqual(expected: unknown): void`
     - [x] The first argument should be a filter for the tests, not the path to the tests folder
-    - [ ] `expect.toBeNull(): void`
-    - [ ] `expect.toBeUndefined(): void`
-    - [ ] `expect.toBeDefined(): void`
-    - [ ] `expect.toBeTruthy(): void`
-    - [ ] `expect.toBeFalsy(): void`
+    - [x] `expect.toBeNull(): void`
+    - [x] `expect.toBeUndefined(): void`
+    - [x] `expect.toBeDefined(): void`
+    - [x] `expect.toBeTruthy(): void`
+    - [x] `expect.toBeFalsy(): void`
     - [ ] Support importing bare specifiers by doing an `import()` from the host and wrapping the result in a `vm.SyntheticModule`
     - [ ] `import.meta.url` and `import.meta.dirname` are undefined. Fix: pass `initializeImportMeta` to `vm.SourceTextModule`
     - [ ] `expect.toThrow(expected?: string | RegExp | Error | Function): void`
