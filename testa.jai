@@ -1438,6 +1438,8 @@ main :: () {
                 return null;
             }
 
+            register_assertion("toBe", to_be, not_to_be);
+
             to_equal :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
                 push_context test_context {
                     assert(test_name_breadcrumb.count > 0);
@@ -1469,6 +1471,7 @@ main :: () {
                 }
                 return null;
             }
+            register_assertion("toEqual", to_equal, not_to_equal);
 
             to_be_null :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
                 push_context test_context {
@@ -1499,9 +1502,37 @@ main :: () {
                 }
                 return null;
             }
+            register_assertion("toBeNull", to_be_null, not_to_be_null);
 
-            register_assertion("toBe", to_be, not_to_be);
-            register_assertion("toEqual", to_equal, not_to_equal);
+            to_be_undefined :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    actual: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *actual));
+
+                    type: napi_valuetype;
+                    napi_try(napi_typeof(env, actual, *type));
+                    if type != .napi_undefined {
+                        throw_error(env, "expected % to be undefined", inspect(env, actual));
+                    }
+                }
+                return null;
+            }
+
+            not_to_be_undefined :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    actual: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *actual));
+
+                    type: napi_valuetype;
+                    napi_try(napi_typeof(env, actual, *type));
+                    if type == .napi_undefined {
+                        throw_error(env, "expected % not to be undefined", inspect(env, actual));
+                    }
+                }
+                return null;
+            }
             register_assertion("toBeNull", to_be_null, not_to_be_null);
 
             napi_check(napi_set_named_property(napi_env_instance, matcher, "not".data, negated_matcher));
