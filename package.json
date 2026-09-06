@@ -16,15 +16,11 @@
   "files": [
     "bin/testa.mjs",
     "install.mjs",
-    "dist/linux-x64/testa",
-    "dist/linux-x64/shim.so",
-    "dist/linux-x64/libnode.so.137",
-    "dist/darwin-arm64/testa",
-    "dist/darwin-arm64/shim.dylib",
-    "dist/darwin-arm64/libnode.137.dylib",
-    "dist/win32-x64/testa.exe",
-    "dist/win32-x64/shim.dll",
-    "dist/win32-x64/libnode.dll",
     "testa.d.ts"
-  ]
+  ],
+  "optionalDependencies": {
+    "@testajs/linux-x64": "0.0.1",
+    "@testajs/darwin-arm64": "0.0.1",
+    "@testajs/win32-x64": "0.0.1"
+  }
 }

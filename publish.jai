@@ -1,6 +1,7 @@
 #import "Basic";
 #import "Compiler";
-#import "File_Utilities";
+#import "File";
+#import "String";
 #import "Process";
 
 #run {
@@ -10,46 +11,60 @@
     }
 }
 
-Platform :: struct {
-    dir:   string;
-    files: [] string;
+#if OS == .WINDOWS {
+    JAI      :: "jai";
+    PLATFORM :: "win32";
+    FILES    :: string.["testa.exe", "shim.dll", "libnode.dll"];
+} else #if OS == .LINUX {
+    JAI      :: "jai-linux";
+    PLATFORM :: "linux";
+    FILES    :: string.["testa", "shim.so", "libnode.so.137"];
+} else #if OS == .MACOS {
+    JAI      :: "jai-macos";
+    PLATFORM :: "darwin";
+    FILES    :: string.["testa", "shim.dylib", "libnode.137.dylib"];
 }
-
-PLATFORMS :: Platform.[
-    .{"linux-x64",    .["testa",     "shim.so",    "libnode.so.137"]},
-    .{"darwin-arm64", .["testa",     "shim.dylib", "libnode.137.dylib"]},
-    .{"win32-x64",    .["testa.exe", "shim.dll",   "libnode.dll"]},
-];
-
 publish :: () -> bool {
-    #if OS == .WINDOWS {
-        jai :: "jai";
-    } else #if OS == .LINUX {
-        jai :: "jai-linux";
-    } else #if OS == .MACOS {
-        jai :: "jai-macos";
-    }
-    result := run_command(jai, "build.jai", "-optimized");
+    ARCH :: #ifx CPU == .ARM64 then "arm64" else "x64";
+
+    result := run_command(JAI, "build.jai", "-optimized");
     if result.exit_code != 0 {
         print("build.jai failed\n");
         return false;
     }
 
-    complete := true;
-    for platform: PLATFORMS {
-        for platform.files {
-            path := tprint("dist/%/%", platform.dir, it);
-            if !file_exists(path) {
-                print("missing %\n", path);
-                complete = false;
-            }
-        }
-    }
-    if !complete {
-        print("build the missing platforms on their own machines and copy them into dist/ before publishing\n");
+    root, ok := read_entire_file("package.json");
+    if !ok return false;
+    found, _, after := split_from_left(root, "\"version\": \"");
+    if !found {
+        print("no version in package.json\n");
         return false;
     }
+    _, version, _ := split_from_left(after, #char "\"");
 
-    result = run_command("npm", "publish");
+    files: String_Builder;
+    for FILES {
+        if it_index append(*files, ", ");
+        print_to_builder(*files, "\"%\"", it);
+    }
+
+    dir := tprint("dist/%-%", PLATFORM, ARCH);
+    package := tprint(#string JSON
+{
+  "name": "@testajs/%1-%2",
+  "version": "%3",
+  "description": "%1 %2 binary for testajs",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gabrielmfern/testa.git"
+  },
+  "os": ["%1"],
+  "cpu": ["%2"],
+  "files": [%4]
+}
+JSON, PLATFORM, ARCH, version, builder_to_string(*files));
+    if !write_entire_file(tprint("%/package.json", dir), package) return false;
+
+    result = run_command("npm", "publish", "--access", "public", working_directory=dir);
     return result.exit_code == 0;
 }
