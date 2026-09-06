@@ -33,10 +33,10 @@ build :: () {
     output_filename: string;
     runtime_libs: [] [2] string;
     #if OS == .WINDOWS {
-        output_filename = "napi-windows.jai";
+        output_filename = "bindings-windows.jai";
         runtime_libs = .[.[libnode_dir, "libnode.dll"], .[".", "shim.dll"]];
     } else #if OS == .LINUX {
-        output_filename = "napi-linux.jai";
+        output_filename = "bindings-linux.jai";
         runtime_libs = .[.[libnode_dir, "libnode.so.137"], .[".", "shim.so"]];
         if !file_exists(tprint("%/libnode.so", libnode_dir)) {
             if symlink("libnode.so.137", tprint("%/libnode.so\0", libnode_dir).data) != 0 {
@@ -45,7 +45,7 @@ build :: () {
             }
         }
     } else #if OS == .MACOS {
-        output_filename = "napi-macos.jai";
+        output_filename = "bindings-macos.jai";
         runtime_libs = .[.[libnode_dir, "libnode.137.dylib"], .[".", "shim.dylib"]];
     } else {
         assert(false);

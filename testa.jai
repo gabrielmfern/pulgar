@@ -11,11 +11,11 @@
 #import "File_Utilities";
 
 #if OS == .WINDOWS {
-    #load "napi-windows.jai";
+    #load "bindings-windows.jai";
 } else #if OS == .MACOS {
-    #load "napi-macos.jai";
+    #load "bindings-macos.jai";
 } else #if OS == .LINUX {
-    #load "napi-linux.jai";
+    #load "bindings-linux.jai";
 }
 
 test_pool: Pool;
