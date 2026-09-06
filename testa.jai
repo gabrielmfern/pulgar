@@ -583,7 +583,7 @@ get_stack_trace_origin :: (stack: string) -> origin: string, internal: bool {
     }
 }
 
-print_leaks :: (builder: *String_Builder, leaks: []Leak) {
+print_leaks :: (leaks: []Leak) {
     internal := 0;
     for leaks {
         if it.async_id >= 0 {
@@ -595,17 +595,17 @@ print_leaks :: (builder: *String_Builder, leaks: []Leak) {
             stack := string_from_napi_value(result);
 
             origin, is_internal := get_stack_trace_origin(stack);
-            if is_internal { 
-                internal += 1; 
+            if is_internal {
+                internal += 1;
             } else {
-                print_to_builder(builder, "    % at %\n", it.type, origin);
+                print("    % at %\n", it.type, origin);
             }
         } else {
-            print_to_builder(builder, "    %\n", it.type);
+            print("    %\n", it.type);
         }
     }
     if internal {
-        print_to_builder(builder, "    % from inside node itself\n", internal);
+        print("    % from inside node itself\n", internal);
     }
 }
 
@@ -803,14 +803,12 @@ cleanup_and_report_test_leaks :: (cp: napi_value) {
     }
 
     leaks: [..]Leak;
-    leaks_builder: String_Builder;
 
     quiesce_report(*leaks, cp);
     if leaks.count {
-        print_leaks(*leaks_builder, leaks);
-        // TODO: fail the test when this happens under some kind of strict mode 
+        // TODO: fail the test when this happens under some kind of strict mode
         print("  Leaks: \n");
-        write_builder(*leaks_builder);
+        print_leaks(leaks);
     }
 
     quiesce_drain(cp);
@@ -818,9 +816,8 @@ cleanup_and_report_test_leaks :: (cp: napi_value) {
     array_reset_keeping_memory(*leaks);
     quiesce_report(*leaks, cp);
     if leaks.count {
-        print_leaks(*leaks_builder, leaks);
         print("  Leaks that could not be quiesced: \n");
-        write_builder(*leaks_builder);
+        print_leaks(leaks);
     }
 }
 
@@ -880,7 +877,6 @@ TestState :: struct {
     expected_to_fail: bool;
     timeout_ms: s64;
 };
-test_name_breadcrumb: [..]string;
 test_state: TestState;
 time_inside_tests: Apollo_Time;
 
@@ -925,7 +921,6 @@ Pending :: struct {
     timeout_ms: s64;
     expected_to_fail: bool;
 }
-pending: [..]Pending;
 SuiteConfiguration :: struct {
     // -1 means the suite doesn't define one, it should just use the default
     timeout_ms: s64;
@@ -936,8 +931,13 @@ SuiteConfiguration :: struct {
     // array
     index: s64;
 };
-// The stack of suite configurations up until now
-suite_configurations: [..]SuiteConfiguration;
+FileState :: struct {
+    pending: [..]Pending;
+    // The stack of suite configurations up until now
+    suite_configurations: [..]SuiteConfiguration;
+    test_name_breadcrumb: [..]string;
+}
+using file_state: FileState;
 
 test_fn: napi_value;
 // TODO: we should support having callbacks to be compatible with vitest, but we
@@ -1293,13 +1293,12 @@ main :: () {
     pool_context.allocator.data = *pool;
 
     set_allocators(*pool);
+    set_allocators(*test_pool);
 
     push_context pool_context {
         test_context = context;
         test_context.allocator.proc = pool_allocator_proc;
         test_context.allocator.data = *test_pool;
-
-        set_allocators(*test_pool);
 
         cwd := get_working_directory();
         #if OS == .WINDOWS {
@@ -1415,10 +1414,11 @@ main :: () {
             }
 
             throw_error :: (env: napi_env, message: string, args: ..Any) #expand {
-                builder: String_Builder;
-                print_to_builder(*builder, message, ..args);
-                append(*builder, 0);
-                napi_try(napi_throw_error(env, null, builder_to_string(*builder).data));
+                text := sprint(message, ..args);
+                text_value, error: napi_value;
+                napi_try(napi_create_string_utf8(env, text.data, xx text.count, *text_value));
+                napi_try(napi_create_error(env, null, text_value, *error));
+                napi_try(napi_throw(env, error));
             }
 
             to_be :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
@@ -2404,9 +2404,6 @@ main :: () {
                         }
                         assert(suite_configurations.count == 0);
                         assert(test_name_breadcrumb.count == 0);
-                        array_reset(*suite_configurations);
-                        array_reset(*test_name_breadcrumb);
-                        array_reset(*pending);
                     }
                 } else {
                     if info.short_name == "node_modules" || info.short_name == ".git" {
@@ -2423,6 +2420,7 @@ main :: () {
                 }
             }
             reset(*test_pool);
+            file_state = .{};
         }
         #if OS == .WINDOWS {
             visit_files(".", recursive=true, null, file_visitor, visit_directories=true);
@@ -2431,11 +2429,11 @@ main :: () {
             #import "System";
 
             directories: [..] string;
-            directories.allocator = temp;
             array_add(*directories, ".");
 
             cursor := 0;
             while cursor < directories.count {
+                auto_release_temp();
                 dir_name := directories[cursor];
                 cursor += 1;
 
@@ -2477,7 +2475,7 @@ main :: () {
 
                     file_visitor(*info, null);
                     if info.is_directory && info.descend_into_directory {
-                        array_add(*directories, info.full_name);
+                        array_add(*directories, copy_string(info.full_name));
                     }
                 }
             }
@@ -2552,6 +2550,7 @@ main :: () {
             to_milliseconds(walk_done - boot_done - time_inside_tests));
         reset_print_styling();
 
+        release(*test_pool);
         release(*pool);
         report_memory_leaks();
     }
