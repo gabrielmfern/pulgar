@@ -817,25 +817,34 @@ cleanup_and_report_test_leaks :: (cp: napi_value) {
     }
 }
 
+describe_exception :: (exception: napi_value) -> string {
+    if v8_value_kind_of(exception) != .ERROR {
+        inspected: napi_value;
+        napi_check(napi_call_function(napi_env_instance, napi_global, testa_inspect_fn, 1, *exception, *inspected));
+        return string_from_napi_value(inspected);
+    }
+    name: napi_value;
+    napi_check(napi_get_named_property(napi_env_instance, exception, "name".data, *name));
+    message: napi_value;
+    napi_check(napi_get_named_property(napi_env_instance, exception, "message".data, *message));
+    napi_check(napi_coerce_to_string(napi_env_instance, name, *name));
+    napi_check(napi_coerce_to_string(napi_env_instance, message, *message));
+    return tprint("%: %", string_from_napi_value(name), string_from_napi_value(message));
+}
+
 print_test_exception :: (exception: napi_value) {
     if !exception {
         return;
     }
-    is_error: bool;
-    napi_check(napi_is_error(napi_env_instance, exception, *is_error));
     valuetype: napi_valuetype;
     napi_check(napi_typeof(napi_env_instance, exception, *valuetype));
-    if is_error {
-        exception_name: napi_value;
-        napi_check(napi_get_named_property(napi_env_instance, exception, "name".data, *exception_name));
-        exception_message: napi_value;
-        napi_check(napi_get_named_property(napi_env_instance, exception, "message".data, *exception_message));
+    if v8_value_kind_of(exception) == .ERROR {
         exception_stack: napi_value;
         napi_check(napi_get_named_property(napi_env_instance, exception, "stack".data, *exception_stack));
 
         print("  threw ");
         set_print_color(.red);
-        print("%: %", string_from_napi_value(exception_name), string_from_napi_value(exception_message));
+        print("%", describe_exception(exception));
         reset_print_styling();
         print(" at %\n", get_stack_trace_origin(string_from_napi_value(exception_stack)));
     } else if valuetype != .napi_undefined && valuetype != .napi_null {
@@ -1570,6 +1579,186 @@ main :: () {
             }
             register_assertion("toBeTruthy", to_be_truthy, to_be_falsy);
             register_assertion("toBeFalsy", to_be_falsy, to_be_truthy);
+
+            thrown_message :: (env: napi_env, thrown: napi_value) -> napi_value #expand {
+                type: napi_valuetype;
+                napi_try(napi_typeof(env, thrown, *type));
+                message := thrown;
+                if type == .napi_object || type == .napi_function {
+                    napi_try(napi_get_named_property(env, thrown, "message".data, *message));
+                }
+                napi_try(napi_typeof(env, message, *type));
+                if type != .napi_string {
+                    return null;
+                }
+                return message;
+            }
+
+            regexp_test :: (env: napi_env, regexp: napi_value, message: napi_value) -> bool #expand {
+                test_fn: napi_value;
+                napi_try(napi_get_named_property(env, regexp, "test".data, *test_fn));
+                result: napi_value;
+                napi_try(napi_call_function(env, regexp, test_fn, 1, *message, *result));
+                matches: bool;
+                napi_try(napi_get_value_bool(env, result, *matches));
+                return matches;
+            }
+
+            to_throw :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    fn: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *fn));
+                    argc: u64 = 1;
+                    expected: napi_value;
+                    napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
+
+                    fn_type: napi_valuetype;
+                    napi_try(napi_typeof(env, fn, *fn_type));
+                    if fn_type != .napi_function {
+                        throw_error(env, "expected % to be a function", describe_exception(fn));
+                        return null;
+                    }
+
+                    ignored: napi_value;
+                    status := napi_call_function(env, napi_global, fn, 0, null, *ignored);
+                    if status != .pending_exception {
+                        napi_try(status);
+                        throw_error(env, "expected function to throw an error, but it didn't");
+                        return null;
+                    }
+                    thrown: napi_value;
+                    napi_try(napi_get_and_clear_last_exception(env, *thrown));
+
+                    expected_type: napi_valuetype;
+                    napi_try(napi_typeof(env, expected, *expected_type));
+                    if expected_type == .napi_undefined {
+                        return null;
+                    }
+
+                    if expected_type == .napi_function {
+                        is_instance: bool;
+                        napi_try(napi_instanceof(env, thrown, expected, *is_instance));
+                        if !is_instance {
+                            name: napi_value;
+                            napi_try(napi_get_named_property(env, expected, "name".data, *name));
+                            throw_error(env, "expected % to be an instance of %", describe_exception(thrown), string_from_napi_value(name));
+                        }
+                        return null;
+                    }
+
+                    expected_kind := v8_value_kind_of(expected);
+                    if expected_kind == .ERROR {
+                        if !deep_equal(env, thrown, expected, null) {
+                            throw_error(env, "expected % to equal %", describe_exception(thrown), describe_exception(expected));
+                        }
+                        return null;
+                    }
+
+                    message := thrown_message(env, thrown);
+                    if expected_type == .napi_string {
+                        expected_string := string_from_napi_value(expected);
+                        matches := false;
+                        if message {
+                            message_string := string_from_napi_value(message);
+                            matches = ifx expected_string.count == 0 then message_string.count == 0 else contains(message_string, expected_string);
+                        }
+                        if !matches {
+                            throw_error(env, "expected error message % to include %", inspect(env, message), inspect(env, expected));
+                        }
+                        return null;
+                    }
+
+                    if expected_kind == .REGEXP {
+                        if !message || !regexp_test(env, expected, message) {
+                            throw_error(env, "expected error message % to match %", inspect(env, message), inspect(env, expected));
+                        }
+                        return null;
+                    }
+
+                    throw_error(env, "toThrow expects a string, RegExp, Error instance or constructor, got %", inspect(env, expected));
+                }
+                return null;
+            }
+
+            not_to_throw :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    fn: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *fn));
+                    argc: u64 = 1;
+                    expected: napi_value;
+                    napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
+
+                    fn_type: napi_valuetype;
+                    napi_try(napi_typeof(env, fn, *fn_type));
+                    if fn_type != .napi_function {
+                        throw_error(env, "expected % to be a function", describe_exception(fn));
+                        return null;
+                    }
+
+                    ignored: napi_value;
+                    status := napi_call_function(env, napi_global, fn, 0, null, *ignored);
+                    if status != .pending_exception {
+                        napi_try(status);
+                        return null;
+                    }
+                    thrown: napi_value;
+                    napi_try(napi_get_and_clear_last_exception(env, *thrown));
+
+                    expected_type: napi_valuetype;
+                    napi_try(napi_typeof(env, expected, *expected_type));
+                    if expected_type == .napi_undefined {
+                        throw_error(env, "expected function not to throw an error, but it threw %", describe_exception(thrown));
+                        return null;
+                    }
+
+                    if expected_type == .napi_function {
+                        is_instance: bool;
+                        napi_try(napi_instanceof(env, thrown, expected, *is_instance));
+                        if is_instance {
+                            name: napi_value;
+                            napi_try(napi_get_named_property(env, expected, "name".data, *name));
+                            throw_error(env, "expected % not to be an instance of %", describe_exception(thrown), string_from_napi_value(name));
+                        }
+                        return null;
+                    }
+
+                    expected_kind := v8_value_kind_of(expected);
+                    if expected_kind == .ERROR {
+                        if deep_equal(env, thrown, expected, null) {
+                            throw_error(env, "expected % not to equal %", describe_exception(thrown), describe_exception(expected));
+                        }
+                        return null;
+                    }
+
+                    message := thrown_message(env, thrown);
+                    if expected_type == .napi_string {
+                        expected_string := string_from_napi_value(expected);
+                        matches := false;
+                        if message {
+                            message_string := string_from_napi_value(message);
+                            matches = ifx expected_string.count == 0 then message_string.count == 0 else contains(message_string, expected_string);
+                        }
+                        if matches {
+                            throw_error(env, "expected error message % not to include %", inspect(env, message), inspect(env, expected));
+                        }
+                        return null;
+                    }
+
+                    if expected_kind == .REGEXP {
+                        if message && regexp_test(env, expected, message) {
+                            throw_error(env, "expected error message % not to match %", inspect(env, message), inspect(env, expected));
+                        }
+                        return null;
+                    }
+
+                    throw_error(env, "toThrow expects a string, RegExp, Error instance or constructor, got %", inspect(env, expected));
+                }
+                return null;
+            }
+            register_assertion("toThrow", to_throw, not_to_throw);
+            register_assertion("toThrowError", to_throw, not_to_throw);
 
             napi_check(napi_set_named_property(napi_env_instance, matcher, "not".data, negated_matcher));
         }

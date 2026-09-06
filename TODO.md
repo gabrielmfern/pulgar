@@ -30,8 +30,8 @@ TO-DO list for public launch:
     - [x] `expect.toBeFalsy(): void`
     - [x] Support importing bare specifiers by doing an `import()` from the host and wrapping the result in a `vm.SyntheticModule`
     - [x] `import.meta.url` and `import.meta.dirname` are undefined. Fix: pass `initializeImportMeta` to `vm.SourceTextModule`
-    - [ ] `expect.toThrow(expected?: string | RegExp | Error | Function): void`
-    - [ ] `expect.toThrowError(expected?: string | RegExp | Error | Function): void` (alias of `toThrow`)
+    - [x] `expect.toThrow(expected?: string | RegExp | Error | Function): void`
+    - [x] `expect.toThrowError(expected?: string | RegExp | Error | Function): void` (alias of `toThrow`)
     - [ ] `expect.toBeTypeOf(type: string): void`
     - [ ] `expect.toBeInstanceOf(constructor: Function): void`
     - [ ] `expect.toBeGreaterThan(expected: number | bigint): void`

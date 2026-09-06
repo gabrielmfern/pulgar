@@ -49,6 +49,8 @@ type Assertions<T> = {
   toBeDefined(): void;
   toBeTruthy(): void;
   toBeFalsy(): void;
+  toThrow(expected?: string | RegExp | Error | (new (...args: any[]) => any)): void;
+  toThrowError(expected?: string | RegExp | Error | (new (...args: any[]) => any)): void;
 };
 
 declare function expect<T>(received: T): {
