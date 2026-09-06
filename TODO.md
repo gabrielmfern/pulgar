@@ -53,8 +53,6 @@ TO-DO list for public launch:
 
 After launch:
 - [x] Walk the file tree with `readdir` and `d_type` instead of `visit_files`, which calls `stat` on every entry
-- [ ] Environments other than node: jsdom, happy-dom and browser mode
-    - `toEqual` skips vitest's DOM node branch (`isEqualNode`) because there's no DOM in node, it needs to come back with these
 - [ ] Compatibility mode: testa runs the files it supports, vitest runs the rest
     - [ ] Scan each test file for the APIs it uses and route it to vitest if any are unsupported
     - [ ] Run the fallback files with `vitest --reporter=json` and render them in testa's output
@@ -70,11 +68,13 @@ After launch:
 - [ ] Run test files in parallel across threads
     - We should use only one isolate per thread, created once at startup and reused for every file.
 - [ ] `vi.useFakeTimers` group: wrap or port sinon's fake-timers, same as vitest does
-- [ ] `vi.mock` group: implement through Node's module customization hooks; until then these files go to the vitest fallback
+- [ ] `vi.mock(path: string, factory?: () => unknown): void`
+- [ ] Environments other than node: jsdom, happy-dom and browser mode
+    - `toEqual` skips vitest's DOM node branch (`isEqualNode`) because there's no DOM in node, it needs to come back with these
 - [ ] Create a command that migrates out of existing test runners
     - Replace syntax such as `it.each` `it.for` with actual loops
     - More migration details will arrive at this point?
-- [ ] `vi.mock(path: string, factory?: () => unknown): void`
+- [ ] We should stop using the native node typescript strip types because it goes through WASM and SWC needlessly. We either implement our own, or use something bundled into testa.
 - [ ] Transform files like Vitest does
     - [ ] `import ... from 'vitest'` should resolve to our API
     - [ ] CommonJS test files. A `.js` file without `"type": "module"` in its package is CJS. We parse it as ESM and it fails on `require`
