@@ -51,6 +51,12 @@ type Assertions<T> = {
   toBeFalsy(): void;
   toThrow(expected?: string | RegExp | Error | (new (...args: any[]) => any)): void;
   toThrowError(expected?: string | RegExp | Error | (new (...args: any[]) => any)): void;
+  toBeTypeOf(expected: "bigint" | "boolean" | "function" | "number" | "object" | "string" | "symbol" | "undefined"): void;
+  toBeInstanceOf(expected: new (...args: any[]) => any): void;
+  toBeGreaterThan(expected: number | bigint): void;
+  toBeGreaterThanOrEqual(expected: number | bigint): void;
+  toBeLessThan(expected: number | bigint): void;
+  toBeLessThanOrEqual(expected: number | bigint): void;
 };
 
 declare function expect<T>(received: T): {

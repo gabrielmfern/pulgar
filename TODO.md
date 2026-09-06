@@ -32,12 +32,12 @@ TO-DO list for public launch:
     - [x] `import.meta.url` and `import.meta.dirname` are undefined. Fix: pass `initializeImportMeta` to `vm.SourceTextModule`
     - [x] `expect.toThrow(expected?: string | RegExp | Error | Function): void`
     - [x] `expect.toThrowError(expected?: string | RegExp | Error | Function): void` (alias of `toThrow`)
-    - [ ] `expect.toBeTypeOf(type: string): void`
-    - [ ] `expect.toBeInstanceOf(constructor: Function): void`
-    - [ ] `expect.toBeGreaterThan(expected: number | bigint): void`
-    - [ ] `expect.toBeGreaterThanOrEqual(expected: number | bigint): void`
-    - [ ] `expect.toBeLessThan(expected: number | bigint): void`
-    - [ ] `expect.toBeLessThanOrEqual(expected: number | bigint): void`
+    - [x] `expect.toBeTypeOf(type: string): void`
+    - [x] `expect.toBeInstanceOf(constructor: Function): void`
+    - [x] `expect.toBeGreaterThan(expected: number | bigint): void`
+    - [x] `expect.toBeGreaterThanOrEqual(expected: number | bigint): void`
+    - [x] `expect.toBeLessThan(expected: number | bigint): void`
+    - [x] `expect.toBeLessThanOrEqual(expected: number | bigint): void`
     - [ ] `expect.toContain(item: unknown): void`
     - [ ] `expect.toContainEqual(item: unknown): void`
     - [ ] `expect.toHaveLength(length: number): void`

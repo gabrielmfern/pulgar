@@ -4,6 +4,7 @@
     #import "Basic";
 }
 #import "String";
+#import "Math";
 #import "File";
 #import "Pool";
 #import "Thread";
@@ -76,7 +77,7 @@ object_is :: (env: napi_env, a: napi_value, b: napi_value) -> bool {
       if same && x == 0 {
           same = (1 / x) == (1 / y);
       } else if !same {
-          same = !(x == x) && !(y == y);
+          same = isnan(x) && isnan(y);
       }
   }
   return same;
@@ -115,10 +116,13 @@ deep_equal :: (env: napi_env, a: napi_value, b: napi_value, parent: *Eq_Frame) -
         case .NUMBER_OBJECT;
             x := v8_number_object_value(a);
             y := v8_number_object_value(b);
+            if isnan(x) || isnan(y) {
+                return isnan(x) && isnan(y);
+            }
             if x == y {
                 return x != 0 || (1 / x) == (1 / y);
             }
-            return !(x == x) && !(y == y);
+            return false;
         case .STRING_OBJECT;
             same: bool;
             try(napi_strict_equals(env, v8_string_object_value(a), v8_string_object_value(b), *same));
@@ -129,7 +133,10 @@ deep_equal :: (env: napi_env, a: napi_value, b: napi_value, parent: *Eq_Frame) -
             x, y: float64;
             try(napi_get_date_value(env, a, *x));
             try(napi_get_date_value(env, b, *y));
-            return x == y || (!(x == x) && !(y == y));
+            if isnan(x) || isnan(y) {
+                return isnan(x) && isnan(y);
+            }
+            return x == y;
         case .REGEXP;
             a_source, b_source, a_flags, b_flags: napi_value;
             try(napi_get_named_property(env, a, "source", *a_source));
@@ -1759,6 +1766,344 @@ main :: () {
             }
             register_assertion("toThrow", to_throw, not_to_throw);
             register_assertion("toThrowError", to_throw, not_to_throw);
+
+            typeof_name :: (type: napi_valuetype) -> string {
+                if type == {
+                    case .napi_undefined; return "undefined";
+                    case .napi_boolean;   return "boolean";
+                    case .napi_number;    return "number";
+                    case .napi_string;    return "string";
+                    case .napi_symbol;    return "symbol";
+                    case .napi_function;  return "function";
+                    case .napi_bigint;    return "bigint";
+                }
+                return "object";
+            }
+
+            to_be_type_of :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    actual: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *actual));
+                    argc: u64 = 1;
+                    expected: napi_value;
+                    napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
+
+                    expected_type: napi_valuetype;
+                    napi_try(napi_typeof(env, expected, *expected_type));
+                    if expected_type != .napi_string {
+                        throw_error(env, "toBeTypeOf expects a string, got %", inspect(env, expected));
+                        return null;
+                    }
+                    actual_type: napi_valuetype;
+                    napi_try(napi_typeof(env, actual, *actual_type));
+                    if typeof_name(actual_type) != string_from_napi_value(expected) {
+                        throw_error(env, "expected % to be type of %", inspect(env, actual), inspect(env, expected));
+                    }
+                }
+                return null;
+            }
+
+            not_to_be_type_of :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    actual: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *actual));
+                    argc: u64 = 1;
+                    expected: napi_value;
+                    napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
+
+                    expected_type: napi_valuetype;
+                    napi_try(napi_typeof(env, expected, *expected_type));
+                    if expected_type != .napi_string {
+                        throw_error(env, "toBeTypeOf expects a string, got %", inspect(env, expected));
+                        return null;
+                    }
+                    actual_type: napi_valuetype;
+                    napi_try(napi_typeof(env, actual, *actual_type));
+                    if typeof_name(actual_type) == string_from_napi_value(expected) {
+                        throw_error(env, "expected % not to be type of %", inspect(env, actual), inspect(env, expected));
+                    }
+                }
+                return null;
+            }
+            register_assertion("toBeTypeOf", to_be_type_of, not_to_be_type_of);
+
+            to_be_instance_of :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    actual: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *actual));
+                    argc: u64 = 1;
+                    expected: napi_value;
+                    napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
+
+                    expected_type: napi_valuetype;
+                    napi_try(napi_typeof(env, expected, *expected_type));
+                    if expected_type != .napi_function {
+                        throw_error(env, "toBeInstanceOf expects a constructor, got %", inspect(env, expected));
+                        return null;
+                    }
+                    is_instance: bool;
+                    napi_try(napi_instanceof(env, actual, expected, *is_instance));
+                    if !is_instance {
+                        name: napi_value;
+                        napi_try(napi_get_named_property(env, expected, "name".data, *name));
+                        throw_error(env, "expected % to be an instance of %", inspect(env, actual), string_from_napi_value(name));
+                    }
+                }
+                return null;
+            }
+
+            not_to_be_instance_of :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    actual: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *actual));
+                    argc: u64 = 1;
+                    expected: napi_value;
+                    napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
+
+                    expected_type: napi_valuetype;
+                    napi_try(napi_typeof(env, expected, *expected_type));
+                    if expected_type != .napi_function {
+                        throw_error(env, "toBeInstanceOf expects a constructor, got %", inspect(env, expected));
+                        return null;
+                    }
+                    is_instance: bool;
+                    napi_try(napi_instanceof(env, actual, expected, *is_instance));
+                    if is_instance {
+                        name: napi_value;
+                        napi_try(napi_get_named_property(env, expected, "name".data, *name));
+                        throw_error(env, "expected % not to be an instance of %", inspect(env, actual), string_from_napi_value(name));
+                    }
+                }
+                return null;
+            }
+            register_assertion("toBeInstanceOf", to_be_instance_of, not_to_be_instance_of);
+
+            Ordering :: enum { LESS; EQUAL; GREATER; UNORDERED; }
+
+            bigint_words :: (env: napi_env, value: napi_value) -> bool, []u64 #expand {
+                sign_bit: s32;
+                count: u64;
+                napi_try(napi_get_value_bigint_words(env, value, null, *count, null));
+                words := NewArray(xx count, u64,, temp);
+                if count > 0 {
+                    napi_try(napi_get_value_bigint_words(env, value, *sign_bit, *count, words.data));
+                }
+                return sign_bit != 0, words;
+            }
+
+            bigint_to_float64 :: (env: napi_env, value: napi_value) -> float64 #expand {
+                negative, words := bigint_words(env, value);
+                result: float64 = 0;
+                for < words {
+                    result = result * 18446744073709551616.0 + cast(float64) it;
+                }
+                return ifx negative then -result else result;
+            }
+
+            numeric_compare :: (env: napi_env, name: string, a: napi_value, b: napi_value) -> Ordering #expand {
+                a_type, b_type: napi_valuetype;
+                napi_try(napi_typeof(env, a, *a_type));
+                napi_try(napi_typeof(env, b, *b_type));
+                if a_type != .napi_number && a_type != .napi_bigint {
+                    throw_error(env, "expected % to be a number or bigint", inspect(env, a));
+                    `return null;
+                }
+                if b_type != .napi_number && b_type != .napi_bigint {
+                    throw_error(env, "% expects a number or bigint, got %", name, inspect(env, b));
+                    `return null;
+                }
+
+                if a_type == .napi_bigint && b_type == .napi_bigint {
+                    a_negative, a_words := bigint_words(env, a);
+                    b_negative, b_words := bigint_words(env, b);
+                    if a_negative != b_negative {
+                        return ifx a_negative then Ordering.LESS else Ordering.GREATER;
+                    }
+                    magnitude := Ordering.EQUAL;
+                    if a_words.count != b_words.count {
+                        magnitude = ifx a_words.count < b_words.count then Ordering.LESS else Ordering.GREATER;
+                    } else {
+                        for < a_words {
+                            if it != b_words[it_index] {
+                                magnitude = ifx it < b_words[it_index] then Ordering.LESS else Ordering.GREATER;
+                                break;
+                            }
+                        }
+                    }
+                    if !a_negative {
+                        return magnitude;
+                    }
+                    if magnitude == .LESS {
+                        return .GREATER;
+                    }
+                    if magnitude == .GREATER {
+                        return .LESS;
+                    }
+                    return .EQUAL;
+                }
+
+                x, y: float64;
+                if a_type == .napi_number {
+                    napi_try(napi_get_value_double(env, a, *x));
+                } else {
+                    x = bigint_to_float64(env, a);
+                }
+                if b_type == .napi_number {
+                    napi_try(napi_get_value_double(env, b, *y));
+                } else {
+                    y = bigint_to_float64(env, b);
+                }
+                if isnan(x) || isnan(y) {
+                    return .UNORDERED;
+                }
+                if x < y {
+                    return .LESS;
+                }
+                if x > y {
+                    return .GREATER;
+                }
+                return .EQUAL;
+            }
+
+            to_be_greater_than :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    actual: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *actual));
+                    argc: u64 = 1;
+                    expected: napi_value;
+                    napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
+
+                    if numeric_compare(env, "toBeGreaterThan", actual, expected) != .GREATER {
+                        throw_error(env, "expected % to be greater than %", inspect(env, actual), inspect(env, expected));
+                    }
+                }
+                return null;
+            }
+
+            not_to_be_greater_than :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    actual: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *actual));
+                    argc: u64 = 1;
+                    expected: napi_value;
+                    napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
+
+                    if numeric_compare(env, "toBeGreaterThan", actual, expected) == .GREATER {
+                        throw_error(env, "expected % not to be greater than %", inspect(env, actual), inspect(env, expected));
+                    }
+                }
+                return null;
+            }
+            register_assertion("toBeGreaterThan", to_be_greater_than, not_to_be_greater_than);
+
+            to_be_greater_than_or_equal :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    actual: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *actual));
+                    argc: u64 = 1;
+                    expected: napi_value;
+                    napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
+
+                    order := numeric_compare(env, "toBeGreaterThanOrEqual", actual, expected);
+                    if order != .GREATER && order != .EQUAL {
+                        throw_error(env, "expected % to be greater than or equal to %", inspect(env, actual), inspect(env, expected));
+                    }
+                }
+                return null;
+            }
+
+            not_to_be_greater_than_or_equal :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    actual: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *actual));
+                    argc: u64 = 1;
+                    expected: napi_value;
+                    napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
+
+                    order := numeric_compare(env, "toBeGreaterThanOrEqual", actual, expected);
+                    if order == .GREATER || order == .EQUAL {
+                        throw_error(env, "expected % not to be greater than or equal to %", inspect(env, actual), inspect(env, expected));
+                    }
+                }
+                return null;
+            }
+            register_assertion("toBeGreaterThanOrEqual", to_be_greater_than_or_equal, not_to_be_greater_than_or_equal);
+
+            to_be_less_than :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    actual: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *actual));
+                    argc: u64 = 1;
+                    expected: napi_value;
+                    napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
+
+                    if numeric_compare(env, "toBeLessThan", actual, expected) != .LESS {
+                        throw_error(env, "expected % to be less than %", inspect(env, actual), inspect(env, expected));
+                    }
+                }
+                return null;
+            }
+
+            not_to_be_less_than :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    actual: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *actual));
+                    argc: u64 = 1;
+                    expected: napi_value;
+                    napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
+
+                    if numeric_compare(env, "toBeLessThan", actual, expected) == .LESS {
+                        throw_error(env, "expected % not to be less than %", inspect(env, actual), inspect(env, expected));
+                    }
+                }
+                return null;
+            }
+            register_assertion("toBeLessThan", to_be_less_than, not_to_be_less_than);
+
+            to_be_less_than_or_equal :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    actual: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *actual));
+                    argc: u64 = 1;
+                    expected: napi_value;
+                    napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
+
+                    order := numeric_compare(env, "toBeLessThanOrEqual", actual, expected);
+                    if order != .LESS && order != .EQUAL {
+                        throw_error(env, "expected % to be less than or equal to %", inspect(env, actual), inspect(env, expected));
+                    }
+                }
+                return null;
+            }
+
+            not_to_be_less_than_or_equal :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    actual: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *actual));
+                    argc: u64 = 1;
+                    expected: napi_value;
+                    napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
+
+                    order := numeric_compare(env, "toBeLessThanOrEqual", actual, expected);
+                    if order == .LESS || order == .EQUAL {
+                        throw_error(env, "expected % not to be less than or equal to %", inspect(env, actual), inspect(env, expected));
+                    }
+                }
+                return null;
+            }
+            register_assertion("toBeLessThanOrEqual", to_be_less_than_or_equal, not_to_be_less_than_or_equal);
 
             napi_check(napi_set_named_property(napi_env_instance, matcher, "not".data, negated_matcher));
         }

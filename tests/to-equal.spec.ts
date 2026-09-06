@@ -16,6 +16,8 @@ describe("toEqual", () => {
 
     test("NaN equals NaN", () => {
       expect(NaN).toEqual(NaN);
+      expect(NaN).not.toEqual(0);
+      expect(0).not.toEqual(NaN);
     });
 
     test("+0 does not equal -0", () => {
@@ -45,6 +47,12 @@ describe("toEqual", () => {
       expect(new Boolean(true)).not.toEqual(new Boolean(false));
     });
 
+    test("boxed NaN", () => {
+      expect(new Number(NaN)).toEqual(new Number(NaN));
+      expect(new Number(NaN)).not.toEqual(new Number(0));
+      expect(new Number(0)).not.toEqual(new Number(NaN));
+    });
+
     test("boxed does not equal primitive", () => {
       expect(new Number(1)).not.toEqual(1);
       expect(1).not.toEqual(new Number(1));
@@ -56,6 +64,12 @@ describe("toEqual", () => {
   describe("dates", () => {
     test("same time", () => {
       expect(new Date(0)).toEqual(new Date(0));
+    });
+
+    test("invalid dates", () => {
+      expect(new Date(NaN)).toEqual(new Date(NaN));
+      expect(new Date(NaN)).not.toEqual(new Date(0));
+      expect(new Date(0)).not.toEqual(new Date(NaN));
     });
 
     test("different time", () => {
