@@ -1,5 +1,5 @@
 {
-  "name": "testajs",
+  "name": "pulgar",
   "version": "0.0.1",
   "description": "A test runner with Node.js embedded",
   "repository": {
@@ -7,20 +7,20 @@
     "url": "git+https://github.com/gabrielmfern/testa.git"
   },
   "bin": {
-    "testa": "bin/testa.mjs"
+    "pulgar": "bin/pulgar.mjs"
   },
-  "types": "testa.d.ts",
+  "types": "pulgar.d.ts",
   "scripts": {
     "postinstall": "node install.mjs"
   },
   "files": [
-    "bin/testa.mjs",
+    "bin/pulgar.mjs",
     "install.mjs",
-    "testa.d.ts"
+    "pulgar.d.ts"
   ],
   "optionalDependencies": {
-    "@testajs/linux-x64": "0.0.1",
-    "@testajs/darwin-arm64": "0.0.1",
-    "@testajs/win32-x64": "0.0.1"
+    "@pulgar/linux-x64": "0.0.1",
+    "@pulgar/darwin-arm64": "0.0.1",
+    "@pulgar/win32-x64": "0.0.1"
   }
 }

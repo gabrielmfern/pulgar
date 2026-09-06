@@ -119,7 +119,7 @@ build :: () {
         set_optimization(*options, .OPTIMIZED);
     }
     options.output_type = .EXECUTABLE;
-    options.output_executable_name = "testa";
+    options.output_executable_name = "pulgar";
     options.output_path = dist_dir;
     make_directory_if_it_does_not_exist(dist_dir, recursive=true);
     for runtime_libs {
@@ -130,5 +130,5 @@ build :: () {
     }
     set_build_options(options, w);
     add_build_string(tprint("DEBUG :: %;", debug), w);
-    add_build_file("testa.jai", w);
+    add_build_file("pulgar.jai", w);
 }

@@ -14,15 +14,15 @@
 #if OS == .WINDOWS {
     JAI      :: "jai";
     PLATFORM :: "win32";
-    FILES    :: string.["testa.exe", "shim.dll", "libnode.dll"];
+    FILES    :: string.["pulgar.exe", "shim.dll", "libnode.dll"];
 } else #if OS == .LINUX {
     JAI      :: "jai-linux";
     PLATFORM :: "linux";
-    FILES    :: string.["testa", "shim.so", "libnode.so.137"];
+    FILES    :: string.["pulgar", "shim.so", "libnode.so.137"];
 } else #if OS == .MACOS {
     JAI      :: "jai-macos";
     PLATFORM :: "darwin";
-    FILES    :: string.["testa", "shim.dylib", "libnode.137.dylib"];
+    FILES    :: string.["pulgar", "shim.dylib", "libnode.137.dylib"];
 }
 publish :: () -> bool {
     ARCH :: #ifx CPU == .ARM64 then "arm64" else "x64";
@@ -51,9 +51,9 @@ publish :: () -> bool {
     dir := tprint("dist/%-%", PLATFORM, ARCH);
     package := tprint(#string JSON
 {
-  "name": "@testajs/%1-%2",
+  "name": "@pulgar/%1-%2",
   "version": "%3",
-  "description": "%1 %2 binary for testajs",
+  "description": "%1 %2 binary for pulgar",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/gabrielmfern/testa.git"

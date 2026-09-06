@@ -8,5 +8,5 @@
     "erasableSyntaxOnly": true,
     "types": ["node"]
   },
-  "include": [".", "../testa.d.ts"]
+  "include": [".", "../pulgar.d.ts"]
 }
