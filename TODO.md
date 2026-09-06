@@ -38,7 +38,7 @@ TO-DO list for public launch:
     - [x] `expect.toBeGreaterThanOrEqual(expected: number | bigint): void`
     - [x] `expect.toBeLessThan(expected: number | bigint): void`
     - [x] `expect.toBeLessThanOrEqual(expected: number | bigint): void`
-    - [ ] `expect.toContain(item: unknown): void`
+    - [x] `expect.toContain(item: unknown): void`
     - [ ] `expect.toContainEqual(item: unknown): void`
     - [ ] `expect.toHaveLength(length: number): void`
     - [ ] `beforeAll`

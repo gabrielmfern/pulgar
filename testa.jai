@@ -34,6 +34,9 @@ temporal_duration_prototype: napi_value;
 noop_fn: napi_value;
 testa_run_fn: napi_value;
 testa_inspect_fn: napi_value;
+string_includes_fn: napi_value;
+array_constructor: napi_value;
+array_from_fn: napi_value;
 node_env: *node_environment;
 node_setup: *node_common_environment_setup;
 
@@ -2105,6 +2108,111 @@ main :: () {
             }
             register_assertion("toBeLessThanOrEqual", to_be_less_than_or_equal, not_to_be_less_than_or_equal);
 
+            array_includes :: (env: napi_env, array: napi_value, item: napi_value) -> bool #expand {
+                length: u32;
+                napi_try(napi_get_array_length(env, array, *length));
+                scope: napi_handle_scope;
+                napi_try(napi_open_handle_scope(env, *scope));
+                defer napi_check(napi_close_handle_scope(env, scope));
+                for 0..cast(s64) length - 1 {
+                    element: napi_value;
+                    napi_try(napi_get_element(env, array, xx it, *element));
+                    same: bool;
+                    napi_try(napi_strict_equals(env, element, item, *same));
+                    if same {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            to_contain :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    actual: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *actual));
+                    argc: u64 = 1;
+                    expected: napi_value;
+                    napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
+
+                    actual_type, expected_type: napi_valuetype;
+                    napi_try(napi_typeof(env, actual, *actual_type));
+                    napi_try(napi_typeof(env, expected, *expected_type));
+
+                    if actual_type == .napi_string {
+                        if expected_type != .napi_string {
+                            throw_error(env, "expected % to be a string since % is a string", inspect(env, expected), inspect(env, actual));
+                            return null;
+                        }
+                        result: napi_value;
+                        napi_try(napi_call_function(env, actual, string_includes_fn, 1, *expected, *result));
+                        found: bool;
+                        napi_try(napi_get_value_bool(env, result, *found));
+                        if !found {
+                            throw_error(env, "expected % to contain %", inspect(env, actual), inspect(env, expected));
+                        }
+                        return null;
+                    }
+
+                    if actual_type != .napi_object {
+                        throw_error(env, "expected % to be a string or an iterable", inspect(env, actual));
+                        return null;
+                    }
+                    array := actual;
+                    if v8_value_kind_of(actual) != .ARRAY {
+                        napi_try(napi_call_function(env, array_constructor, array_from_fn, 1, *actual, *array));
+                    }
+                    if !array_includes(env, array, expected) {
+                        throw_error(env, "expected % to contain %", inspect(env, actual), inspect(env, expected));
+                    }
+                }
+                return null;
+            }
+
+            not_to_contain :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    actual: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *actual));
+                    argc: u64 = 1;
+                    expected: napi_value;
+                    napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
+
+                    actual_type, expected_type: napi_valuetype;
+                    napi_try(napi_typeof(env, actual, *actual_type));
+                    napi_try(napi_typeof(env, expected, *expected_type));
+
+                    if actual_type == .napi_string {
+                        if expected_type != .napi_string {
+                            throw_error(env, "expected % to be a string since % is a string", inspect(env, expected), inspect(env, actual));
+                            return null;
+                        }
+                        result: napi_value;
+                        napi_try(napi_call_function(env, actual, string_includes_fn, 1, *expected, *result));
+                        found: bool;
+                        napi_try(napi_get_value_bool(env, result, *found));
+                        if found {
+                            throw_error(env, "expected % not to contain %", inspect(env, actual), inspect(env, expected));
+                        }
+                        return null;
+                    }
+
+                    if actual_type != .napi_object {
+                        throw_error(env, "expected % to be a string or an iterable", inspect(env, actual));
+                        return null;
+                    }
+                    array := actual;
+                    if v8_value_kind_of(actual) != .ARRAY {
+                        napi_try(napi_call_function(env, array_constructor, array_from_fn, 1, *actual, *array));
+                    }
+                    if array_includes(env, array, expected) {
+                        throw_error(env, "expected % not to contain %", inspect(env, actual), inspect(env, expected));
+                    }
+                }
+                return null;
+            }
+            register_assertion("toContain", to_contain, not_to_contain);
+
             napi_check(napi_set_named_property(napi_env_instance, matcher, "not".data, negated_matcher));
         }
 
@@ -2173,6 +2281,16 @@ main :: () {
             url: napi_value;
             napi_check(napi_get_named_property(napi_env_instance, napi_global, "URL".data, *url));
             napi_check(napi_get_named_property(napi_env_instance, url, "prototype".data, *url_prototype));
+        }
+        {
+            string_constructor, string_prototype: napi_value;
+            napi_check(napi_get_named_property(napi_env_instance, napi_global, "String".data, *string_constructor));
+            napi_check(napi_get_named_property(napi_env_instance, string_constructor, "prototype".data, *string_prototype));
+            napi_check(napi_get_named_property(napi_env_instance, string_prototype, "includes".data, *string_includes_fn));
+        }
+        {
+            napi_check(napi_get_named_property(napi_env_instance, napi_global, "Array".data, *array_constructor));
+            napi_check(napi_get_named_property(napi_env_instance, array_constructor, "from".data, *array_from_fn));
         }
 
         {
