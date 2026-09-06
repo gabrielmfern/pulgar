@@ -20,6 +20,7 @@
 
 test_pool: Pool;
 test_context: #Context;
+output: String_Builder;
 
 ///////////////////////////////////////////////////////////////////////////////
 // node
@@ -334,12 +335,13 @@ on_uncaught_exception :: (env: napi_env, info: napi_callback_info) -> napi_value
 
         if !running_test {
             set_print_color(.red);
-            print("✘ ");
+            print(*output, "✘ ");
             reset_print_styling();
             print_test_path();
-            print("\n");
+            print(*output, "\n");
             print_test_exception(error);
             failed += 1;
+            write_builder(*output);
         } else if uncaught_exception {
             print_test_exception(error);
         } else {
@@ -413,11 +415,11 @@ call_testing_function :: (
             promise_state = v8_promise_state(promise);
             if promise_state == kFulfilled || promise_state == kRejected {
                 // TODO: in this error message, explain what kind of things can leave the loop busy.
-                // print("  The test promise finished, but the event loop was still busy.\n");
+                // print(*output, "  The test promise finished, but the event loop was still busy.\n");
                 break;
             }
             if atomic_load(*interruption) != .NONE {
-                // print("  Timeout of %ms was reached, killing async work because of it.\n", timeout_ms);
+                // print(*output, "  Timeout of %ms was reached, killing async work because of it.\n", timeout_ms);
                 // TODO: add an explicit error message for when the test times out, currently it just fails.
                 success = false;
                 break;
@@ -601,14 +603,14 @@ print_leaks :: (leaks: []Leak) {
             if is_internal {
                 internal += 1;
             } else {
-                print("    % at %\n", it.type, origin);
+                print(*output, "    % at %\n", it.type, origin);
             }
         } else {
-            print("    %\n", it.type);
+            print(*output, "    %\n", it.type);
         }
     }
     if internal {
-        print("    % from inside node itself\n", internal);
+        print(*output, "    % from inside node itself\n", internal);
     }
 }
 
@@ -690,19 +692,19 @@ colors :: string.[
 ];
 
 set_print_color :: (color: Color) {
-    print(colors[xx color]);
+    print(*output, colors[xx color]);
 }
 
 set_print_bold :: () {
-    print("\e[1m");
+    print(*output, "\e[1m");
 }
 
 set_print_dim :: () {
-    print("\e[2m");
+    print(*output, "\e[2m");
 }
 
 reset_print_styling :: () {
-    print("\e[0m");
+    print(*output, "\e[0m");
 }
 
 ProcessOutputCapture :: struct {
@@ -791,9 +793,9 @@ deinit_process_output_capture :: (process_output_capture: *ProcessOutputCapture)
 
 print_test_path :: () {
     for test_name_breadcrumb {
-        print("%", it);
+        print(*output, "%", it);
         if it_index + 1 < test_name_breadcrumb.count {
-            print(" > ");
+            print(*output, " > ");
         }
     }
 }
@@ -810,7 +812,7 @@ cleanup_and_report_test_leaks :: (cp: napi_value) {
     quiesce_report(*leaks, cp);
     if leaks.count {
         // TODO: fail the test when this happens under some kind of strict mode
-        print("  Leaks: \n");
+        print(*output, "  Leaks: \n");
         print_leaks(leaks);
     }
 
@@ -819,7 +821,7 @@ cleanup_and_report_test_leaks :: (cp: napi_value) {
     array_reset_keeping_memory(*leaks);
     quiesce_report(*leaks, cp);
     if leaks.count {
-        print("  Leaks that could not be quiesced: \n");
+        print(*output, "  Leaks that could not be quiesced: \n");
         print_leaks(leaks);
     }
 }
@@ -849,17 +851,17 @@ print_test_exception :: (exception: napi_value) {
         exception_stack: napi_value;
         napi_check(napi_get_named_property(napi_env_instance, exception, "stack".data, *exception_stack));
 
-        print("  threw ");
+        print(*output, "  threw ");
         set_print_color(.red);
-        print("%", describe_exception(exception));
+        print(*output, "%", describe_exception(exception));
         reset_print_styling();
-        print(" at %\n", get_stack_trace_origin(string_from_napi_value(exception_stack)));
+        print(*output, " at %\n", get_stack_trace_origin(string_from_napi_value(exception_stack)));
     } else if valuetype != .napi_undefined && valuetype != .napi_null {
         exception_stringified: napi_value;
         napi_check(napi_coerce_to_string(napi_env_instance, exception, *exception_stringified));
-        print("  threw ");
+        print(*output, "  threw ");
         set_print_color(.red);
-        print("%\n", string_from_napi_value(exception_stringified));
+        print(*output, "%\n", string_from_napi_value(exception_stringified));
     }
 }
 
@@ -1071,13 +1073,14 @@ test_skip :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
         defer array_unordered_remove_by_index(*test_name_breadcrumb, test_name_breadcrumb.count - 1);
 
         set_print_color(.yellow);
-        print("— ");
+        print(*output, "— ");
         print_test_path();
         set_print_color(.brightBlack);
         set_print_dim();
-        print("[test.skip]\n");
+        print(*output, "[test.skip]\n");
         reset_print_styling();
         skipped += 1;
+        write_builder(*output);
 
         return null;
     }
@@ -1103,11 +1106,12 @@ test_todo :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
 
         set_print_color(.brightBlack);
         set_print_dim();
-        print("— ");
+        print(*output, "— ");
         print_test_path();
-        print("[test.todo]\n");
+        print(*output, "[test.todo]\n");
         reset_print_styling();
         todo += 1;
+        write_builder(*output);
 
         return null;
     }
@@ -1132,13 +1136,14 @@ describe_skip :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call
         defer array_unordered_remove_by_index(*test_name_breadcrumb, test_name_breadcrumb.count - 1);
 
         set_print_color(.yellow);
-        print("— ");
+        print(*output, "— ");
         print_test_path();
         set_print_color(.brightBlack);
         set_print_dim();
-        print("[describe.skip]\n");
+        print(*output, "[describe.skip]\n");
         reset_print_styling();
         skipped += 1;
+        write_builder(*output);
 
         return null;
     }
@@ -1164,11 +1169,12 @@ describe_todo :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call
 
         set_print_color(.brightBlack);
         set_print_dim();
-        print("— ");
+        print(*output, "— ");
         print_test_path();
-        print("[describe.todo]\n");
+        print(*output, "[describe.todo]\n");
         reset_print_styling();
         todo += 1;
+        write_builder(*output);
 
         return null;
     }
@@ -1297,6 +1303,7 @@ main :: () {
 
     set_allocators(*pool);
     set_allocators(*test_pool);
+    init_string_builder(*output);
 
     push_context pool_context {
         test_context = context;
@@ -1376,7 +1383,8 @@ main :: () {
         node_add_linked_binding(node_env, "testa".data, register);
         status := node_load_environment_module(node_env, BOOTSTRAP.data, "file:///__bootstrap__.mjs".data);
         if status == 1 {
-            print("Could not load environment with bootstrap script");
+            print(*output, "Could not load environment with bootstrap script");
+            write_builder(*output);
             return;
         }
         assert(napi_env_instance != null);
@@ -2494,9 +2502,10 @@ main :: () {
                         || ends_with(info.short_name, ".spec.cjs") 
                         || ends_with(info.short_name, ".spec.mjs") {
                             test_files += 1;
+                            defer write_builder(*output);
                             absolute, success := get_absolute_path(info.full_name);
                             if !success {
-                                print("Could not resolve path: %", relative);
+                                print(*output, "Could not resolve path: %", relative);
                                 return;
                             }
 
@@ -2528,7 +2537,7 @@ main :: () {
                             defer v8_promise_unref(run_promise);
                             while v8_promise_state(run_promise) == kPending && atomic_load(*interruption) != .SIGINT && node_spin_event_loop_once(node_setup) {}
                             if v8_promise_state(run_promise) == kRejected {
-                                print("Failed to load %", relative);
+                                print(*output, "Failed to load %", relative);
                                 return;
                             }
 
@@ -2577,6 +2586,7 @@ main :: () {
                                     set_print_dim();
                                     cleanup_and_report_test_leaks(cp);
                                     reset_print_styling();
+                                    write_builder(*output);
                                 } else {
                                     test_state.timeout_ms = it.timeout_ms;
                                     test_state.start = current_time_monotonic();
@@ -2596,25 +2606,25 @@ main :: () {
 
                                     if test_state.passed {
                                         set_print_color(.green);
-                                        print("✔ ");
+                                        print(*output, "✔ ");
                                         reset_print_styling();
 
                                         print_test_path();
                                         if test_state.expected_to_fail {
                                             set_print_color(.brightBlack);
                                             set_print_dim();
-                                            print("[test.failing]");
+                                            print(*output, "[test.failing]");
                                         }
                                         passed += 1;
                                     } else {
                                         set_print_color(.red);
-                                        print("✘ ");
+                                        print(*output, "✘ ");
                                         reset_print_styling();
                                         print_test_path();
                                         if test_state.expected_to_fail {
                                             set_print_color(.brightBlack);
                                             set_print_dim();
-                                            print("[test.failing]");
+                                            print(*output, "[test.failing]");
                                         }
                                         failed += 1;
                                     }
@@ -2624,15 +2634,15 @@ main :: () {
                                     set_print_color(.brightBlack);
                                     set_print_dim();
                                     if (to_seconds(duration) > 0) {
-                                        print(" %s\n", to_seconds(duration));
+                                        print(*output, " %s\n", to_seconds(duration));
                                     } else if (to_milliseconds(duration) > 0) {
-                                        print(" %ms\n", to_milliseconds(duration));
+                                        print(*output, " %ms\n", to_milliseconds(duration));
                                     } else if (to_microseconds(duration) > 0) {
-                                        print(" %μs\n", to_microseconds(duration));
+                                        print(*output, " %μs\n", to_microseconds(duration));
                                     } else if (to_nanoseconds(duration) > 0) {
                                         // I don't think this can ever be the case, but just to be safe, this is literally a catch-all for 
                                         // the time a modern computer can take to do a single operation
-                                        print(" %ns\n", to_nanoseconds(duration));
+                                        print(*output, " %ns\n", to_nanoseconds(duration));
                                     }
                                     reset_print_styling();
 
@@ -2642,6 +2652,7 @@ main :: () {
                                     set_print_dim();
                                     cleanup_and_report_test_leaks(cp);
                                     reset_print_styling();
+                                    write_builder(*output);
                                 };
                             }
 
@@ -2747,44 +2758,44 @@ main :: () {
     }
 
     set_print_color(.red);
-    print("% failed", failed);
+    print(*output, "% failed", failed);
     reset_print_styling();
 
     set_print_dim();
-    print(", ");
+    print(*output, ", ");
     reset_print_styling();
 
     set_print_color(.green);
-    print("% passed", passed);
+    print(*output, "% passed", passed);
     reset_print_styling();
 
     if skipped > 0 {
         set_print_dim();
-        print(", ");
+        print(*output, ", ");
         reset_print_styling();
 
         set_print_color(.yellow);
-        print("% skipped", skipped);
+        print(*output, "% skipped", skipped);
         reset_print_styling();
     }
 
     if todo > 0 {
         set_print_dim();
-        print(", ");
+        print(*output, ", ");
         reset_print_styling();
 
         set_print_color(.brightBlack);
         set_print_dim();
-        print("% todo", todo);
+        print(*output, "% todo", todo);
         reset_print_styling();
     }
 
     if test_files == 0 && filters.count > 0 {
         set_print_dim();
-        print(", no test files found for filter:");
+        print(*output, ", no test files found for filter:");
         args := get_command_line_arguments();
         for 1..args.count - 1 {
-            print(" %", args[it]);
+            print(*output, " %", args[it]);
         }
         reset_print_styling();
     }
@@ -2793,25 +2804,27 @@ main :: () {
     set_print_color(.brightBlack);
     set_print_dim();
     if to_seconds(total) > 0 {
-        print(" in %s", to_seconds(total));
+        print(*output, " in %s", to_seconds(total));
     } else if to_milliseconds(total) > 0 {
-        print(" in %ms", to_milliseconds(total));
+        print(*output, " in %ms", to_milliseconds(total));
     } else {
-        print(" in %μs", to_microseconds(total));
+        print(*output, " in %μs", to_microseconds(total));
     }
     reset_print_styling();
 
-    print("\n");
+    print(*output, "\n");
+    write_builder(*output);
 
     #if DEBUG {
         outside := total - time_inside_tests;
         set_print_color(.brightBlack);
         set_print_dim();
-        print("%ms outside of tests: %ms boot, %ms files\n",
+        print(*output, "%ms outside of tests: %ms boot, %ms files\n",
             to_milliseconds(outside),
             to_milliseconds(boot_done - run_start),
             to_milliseconds(walk_done - boot_done - time_inside_tests));
         reset_print_styling();
+        write_builder(*output);
 
         release(*test_pool);
         release(*pool);
