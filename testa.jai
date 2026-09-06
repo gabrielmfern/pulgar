@@ -810,30 +810,35 @@ print_test_path :: () {
     }
 }
 
-cleanup_and_report_test_leaks :: (cp: napi_value) {
+cleanup_test_leaks :: (cp: napi_value) -> leaks: [..]Leak, remaining: [..]Leak {
+    leaks, remaining: [..]Leak;
     if atomic_load(*interruption) == .SIGINT {
         node_cancel_terminate_execution(node_setup);
         node_clear_async_id_stack(node_setup);
-        return;
+        return leaks, remaining;
     }
 
-    leaks: [..]Leak;
-
     quiesce_report(*leaks, cp);
+    quiesce_drain(cp);
+    quiesce_report(*remaining, cp);
+    return leaks, remaining;
+}
+
+report_test_leaks :: (leaks: [..]Leak, remaining: [..]Leak) {
     if leaks.count {
         // TODO: fail the test when this happens under some kind of strict mode
         print(*output, "  Leaks: \n");
         print_leaks(leaks);
     }
-
-    quiesce_drain(cp);
-
-    array_reset_keeping_memory(*leaks);
-    quiesce_report(*leaks, cp);
-    if leaks.count {
+    if remaining.count {
         print(*output, "  Leaks that could not be quiesced: \n");
-        print_leaks(leaks);
+        print_leaks(remaining);
     }
+}
+
+cleanup_and_report_test_leaks :: (cp: napi_value) {
+    leaks, remaining := cleanup_test_leaks(cp);
+    report_test_leaks(leaks, remaining);
 }
 
 describe_exception :: (exception: napi_value) -> string {
@@ -2815,6 +2820,10 @@ main :: () {
                                         }
                                     }
 
+                                    leaks, remaining := cleanup_test_leaks(cp);
+                                    duration := current_time_monotonic() - test_state.start;
+                                    time_inside_tests += duration;
+
                                     if !success {
                                         test_state.passed = false;
                                     }
@@ -2857,9 +2866,6 @@ main :: () {
                                         }
                                         failed += 1;
                                     }
-                                    duration := current_time_monotonic() - test_state.start;
-                                    time_inside_tests += duration;
-
                                     set_print_color(.brightBlack);
                                     set_print_dim();
                                     if (to_seconds(duration) > 0) {
@@ -2879,7 +2885,7 @@ main :: () {
 
                                     set_print_color(.brightBlack);
                                     set_print_dim();
-                                    cleanup_and_report_test_leaks(cp);
+                                    report_test_leaks(leaks, remaining);
                                     reset_print_styling();
                                     write_builder(*output);
                                 };
