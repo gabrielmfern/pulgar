@@ -65,6 +65,6 @@ publish :: () -> bool {
 JSON, PLATFORM, ARCH, version, builder_to_string(*files));
     if !write_entire_file(tprint("%/package.json", dir), package) return false;
 
-    result = run_command("npm", "publish", "--access", "public", working_directory=dir);
-    return result.exit_code == 0;
+    print("ready: cd % && npm publish --access public\n", dir);
+    return true;
 }
