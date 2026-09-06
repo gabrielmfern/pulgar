@@ -41,10 +41,10 @@ TO-DO list for public launch:
     - [x] `expect.toContain(item: unknown): void`
     - [x] `expect.toContainEqual(item: unknown): void`
     - [x] `expect.toHaveLength(length: number): void`
-    - [ ] `beforeAll`
-    - [ ] `afterAll`
-    - [ ] `beforeEach`
-    - [ ] `beforeAll`
+    - [x] `beforeAll`
+    - [x] `afterAll`
+    - [x] `beforeEach`
+    - [x] `afterEach`
     - [ ] Implement the view of the diff for the expect failure
 - [ ] documentation
     - [ ] write the README

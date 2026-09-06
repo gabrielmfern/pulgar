@@ -38,6 +38,16 @@ declare const test: TestCallback & {
 
 declare const it: typeof test;
 
+type HookCallback = (
+  callback: (() => void) | (() => Promise<void>),
+  timeoutTime?: number,
+) => void;
+
+declare const beforeAll: HookCallback;
+declare const afterAll: HookCallback;
+declare const beforeEach: HookCallback;
+declare const afterEach: HookCallback;
+
 type Assertions<T> = {
   /**
     * Does not throw when the expectation is false.

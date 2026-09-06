@@ -117,7 +117,7 @@ int node_spin_event_loop(node_environment* env) {
 
 int node_spin_event_loop_once(node_common_environment_setup* setup) {
     uv_loop_t* loop = setup->setup->event_loop();
-    uv_run(loop, UV_RUN_DEFAULT);
+    uv_run(loop, UV_RUN_ONCE);
     node::GetMultiIsolatePlatform(setup->setup->env())->DrainTasks(setup->setup->isolate());
     if (uv_loop_alive(loop)) return 1;
     if (node::EmitProcessBeforeExit(setup->setup->env()).IsNothing()) return 0;

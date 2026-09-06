@@ -903,6 +903,7 @@ Filter :: struct {
 filters: [..]Filter;
 
 NULL_TIMEOUT: s64: -1;
+DEFAULT_HOOK_TIMEOUT_MS: s64: 10000;
 
 matcher: napi_value;
 negated_matcher: napi_value;
@@ -936,6 +937,11 @@ Pending :: struct {
     timeout_ms: s64;
     expected_to_fail: bool;
 }
+Hook :: struct {
+    callback: napi_ref;
+    this: napi_ref;
+    timeout_ms: s64;
+}
 SuiteConfiguration :: struct {
     // -1 means the suite doesn't define one, it should just use the default
     timeout_ms: s64;
@@ -945,6 +951,11 @@ SuiteConfiguration :: struct {
     // and other suites can be inserted right after this suite in the pending
     // array
     index: s64;
+
+    before_all: [..]Hook;
+    after_all: [..]Hook;
+    before_each: [..]Hook;
+    after_each: [..]Hook;
 };
 FileState :: struct {
     pending: [..]Pending;
@@ -953,6 +964,39 @@ FileState :: struct {
     test_name_breadcrumb: [..]string;
 }
 using file_state: FileState;
+
+// Runs a suite's hooks in registration order, or in reverse for the after hooks.
+// Stops at the first failure and returns its exception.
+run_hooks :: (hooks: []Hook, reverse: bool) -> success: bool, exception: napi_value {
+    for hooks {
+        if atomic_load(*interruption) == .SIGINT {
+            break;
+        }
+        hook := ifx reverse then hooks[hooks.count - 1 - it_index] else it;
+        callback, this: napi_value;
+        napi_check(napi_get_reference_value(napi_env_instance, hook.callback, *callback));
+        napi_check(napi_get_reference_value(napi_env_instance, hook.this, *this));
+        success, exception := call_testing_function(callback, this, hook.timeout_ms);
+        if !success {
+            return false, exception;
+        }
+    }
+    no_exception: napi_value;
+    return true, no_exception;
+}
+
+free_suite_hooks :: (config: *SuiteConfiguration) {
+    free_hook_list :: (hooks: []Hook) {
+        for hooks {
+            napi_check(napi_delete_reference(napi_env_instance, it.callback));
+            napi_check(napi_delete_reference(napi_env_instance, it.this));
+        }
+    }
+    free_hook_list(config.before_all);
+    free_hook_list(config.after_all);
+    free_hook_list(config.before_each);
+    free_hook_list(config.after_each);
+}
 
 test_fn: napi_value;
 // TODO: we should support having callbacks to be compatible with vitest, but we
@@ -992,7 +1036,7 @@ test :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
         timeout_ms: s64;
         if timeout_ms_value_type != .napi_undefined && timeout_ms_value_type != .napi_null {
             napi_try(napi_get_value_int64(napi_env_instance, timeout_ms_value, *timeout_ms));
-        } else if suite_configurations.count > 0 && suite_configurations[suite_configurations.count - 1].timeout_ms > NULL_TIMEOUT {
+        } else if suite_configurations[suite_configurations.count - 1].timeout_ms > NULL_TIMEOUT {
             timeout_ms = suite_configurations[suite_configurations.count - 1].timeout_ms;
         } else {
             timeout_ms = 5000;
@@ -1005,16 +1049,12 @@ test :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
         pending_test.suite = false;
         napi_try(napi_create_reference(env, callback, 1, *pending_test.callback));
         napi_try(napi_create_reference(env, this, 1, *pending_test.this));
-        if suite_configurations.count > 0 {
-            array_insert_at(
-                *pending, 
-                pending_test, 
-                suite_configurations[suite_configurations.count - 1].index + suite_configurations[suite_configurations.count - 1].pending_count + 1
-            );
-            suite_configurations[suite_configurations.count - 1].pending_count += 1;
-        } else {
-            array_add(*pending, pending_test);
-        }
+        array_insert_at(
+            *pending,
+            pending_test,
+            suite_configurations[suite_configurations.count - 1].index + suite_configurations[suite_configurations.count - 1].pending_count + 1
+        );
+        suite_configurations[suite_configurations.count - 1].pending_count += 1;
     }
     return null;
 }
@@ -1263,7 +1303,7 @@ describe :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
         timeout_ms: s64;
         if timeout_ms_value_type != .napi_undefined && timeout_ms_value_type != .napi_null {
             napi_try(napi_get_value_int64(napi_env_instance, timeout_ms_value, *timeout_ms));
-        } else if suite_configurations.count > 0 && suite_configurations[suite_configurations.count - 1].timeout_ms > NULL_TIMEOUT {
+        } else if suite_configurations[suite_configurations.count - 1].timeout_ms > NULL_TIMEOUT {
             timeout_ms = suite_configurations[suite_configurations.count - 1].timeout_ms;
         } else {
             timeout_ms = NULL_TIMEOUT;
@@ -1275,18 +1315,79 @@ describe :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
         pending_suite.suite = true;
         napi_try(napi_create_reference(env, callback, 1, *pending_suite.callback));
         napi_try(napi_create_reference(env, this, 1, *pending_suite.this));
-        if suite_configurations.count > 0 {
-            array_insert_at(
-                *pending, 
-                pending_suite, 
-                suite_configurations[suite_configurations.count - 1].index + suite_configurations[suite_configurations.count - 1].pending_count + 1
-            );
-            suite_configurations[suite_configurations.count - 1].pending_count += 1;
-        } else {
-            array_add(*pending, pending_suite);
-        }
+        array_insert_at(
+            *pending,
+            pending_suite,
+            suite_configurations[suite_configurations.count - 1].index + suite_configurations[suite_configurations.count - 1].pending_count + 1
+        );
+        suite_configurations[suite_configurations.count - 1].pending_count += 1;
     }
     return null;
+}
+
+add_hook :: (env: napi_env, info: napi_callback_info, api_name: string, hooks: *[..]Hook) -> napi_value {
+    argc: u64 = 2;
+    argv: [2]napi_value;
+    this: napi_value;
+    napi_try(napi_get_cb_info(env, info, *argc, argv.data, *this, null));
+    callback := argv[0];
+    timeout_ms_value := argv[1];
+
+    type: napi_valuetype;
+    napi_try(napi_typeof(env, callback, *type));
+    if type != .napi_function {
+        napi_check(napi_throw_type_error(env, null, tprint("%(fn, timeout?): fn must be a function", api_name).data));
+        return null;
+    }
+    napi_try(napi_typeof(env, timeout_ms_value, *type));
+    if type != .napi_undefined && type != .napi_number {
+        napi_check(napi_throw_type_error(env, null, tprint("%(fn, timeout?): timeout must be a number", api_name).data));
+        return null;
+    }
+
+    timeout_ms_value_type: napi_valuetype;
+    napi_try(napi_typeof(napi_env_instance, timeout_ms_value, *timeout_ms_value_type));
+    timeout_ms: s64;
+    if timeout_ms_value_type != .napi_undefined && timeout_ms_value_type != .napi_null {
+        napi_try(napi_get_value_int64(napi_env_instance, timeout_ms_value, *timeout_ms));
+    } else {
+        timeout_ms = DEFAULT_HOOK_TIMEOUT_MS;
+    }
+
+    hook: Hook;
+    hook.timeout_ms = timeout_ms;
+    napi_try(napi_create_reference(env, callback, 1, *hook.callback));
+    napi_try(napi_create_reference(env, this, 1, *hook.this));
+    array_add(hooks, hook);
+    return null;
+}
+
+before_all_fn: napi_value;
+before_all :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+    push_context test_context {
+        return add_hook(env, info, "beforeAll", *suite_configurations[suite_configurations.count - 1].before_all);
+    }
+}
+
+after_all_fn: napi_value;
+after_all :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+    push_context test_context {
+        return add_hook(env, info, "afterAll", *suite_configurations[suite_configurations.count - 1].after_all);
+    }
+}
+
+before_each_fn: napi_value;
+before_each :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+    push_context test_context {
+        return add_hook(env, info, "beforeEach", *suite_configurations[suite_configurations.count - 1].before_each);
+    }
+}
+
+after_each_fn: napi_value;
+after_each :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+    push_context test_context {
+        return add_hook(env, info, "afterEach", *suite_configurations[suite_configurations.count - 1].after_each);
+    }
 }
 
 register :: (env: napi_env, exports: napi_value) -> napi_value #c_call {
@@ -2458,6 +2559,21 @@ main :: () {
                 napi_check(napi_set_named_property(napi_env_instance, napi_global, "test".data, test_fn));
                 napi_check(napi_set_named_property(napi_env_instance, napi_global, "it".data, test_fn));
             }
+
+            {
+                // hooks
+                napi_check(napi_create_function(napi_env_instance, "beforeAll".data, "beforeAll".count, before_all, null, *before_all_fn));
+                napi_check(napi_set_named_property(napi_env_instance, napi_global, "beforeAll".data, before_all_fn));
+
+                napi_check(napi_create_function(napi_env_instance, "afterAll".data, "afterAll".count, after_all, null, *after_all_fn));
+                napi_check(napi_set_named_property(napi_env_instance, napi_global, "afterAll".data, after_all_fn));
+
+                napi_check(napi_create_function(napi_env_instance, "beforeEach".data, "beforeEach".count, before_each, null, *before_each_fn));
+                napi_check(napi_set_named_property(napi_env_instance, napi_global, "beforeEach".data, before_each_fn));
+
+                napi_check(napi_create_function(napi_env_instance, "afterEach".data, "afterEach".count, after_each, null, *after_each_fn));
+                napi_check(napi_set_named_property(napi_env_instance, napi_global, "afterEach".data, after_each_fn));
+            }
         }
 
         napi_check(napi_get_named_property(napi_env_instance, napi_global, "__testa_run".data, *testa_run_fn));
@@ -2551,6 +2667,16 @@ main :: () {
                             cp := quiesce_checkpoint();
                             defer cleanup_and_report_test_leaks(cp);
 
+                            root_suite_configuration: SuiteConfiguration;
+                            root_suite_configuration.timeout_ms = NULL_TIMEOUT;
+                            root_suite_configuration.pending_count = 0;
+                            root_suite_configuration.index = -1;
+                            array_add(*suite_configurations, root_suite_configuration);
+                            defer {
+                                free_suite_hooks(*suite_configurations[suite_configurations.count - 1]);
+                                array_unordered_remove_by_index(*suite_configurations, suite_configurations.count - 1);
+                            }
+
                             absolute_file_path_string: napi_value;
                             napi_check(napi_create_string_utf8(napi_env_instance, absolute.data, cast(u64) absolute.count, *absolute_file_path_string));
 
@@ -2591,14 +2717,23 @@ main :: () {
                                     suite_configuration.pending_count = 0;
                                     suite_configuration.index = i.*;
                                     array_add(*suite_configurations, suite_configuration);
-                                    defer array_unordered_remove_by_index(*suite_configurations, suite_configurations.count - 1);
+                                    defer {
+                                        free_suite_hooks(*suite_configurations[suite_configurations.count - 1]);
+                                        array_unordered_remove_by_index(*suite_configurations, suite_configurations.count - 1);
+                                    }
 
                                     cp := quiesce_checkpoint();
                                     success, exception := call_testing_function(
-                                        callback, 
-                                        this, 
+                                        callback,
+                                        this,
                                         ifx it.timeout_ms > NULL_TIMEOUT it.timeout_ms else 5000
                                     );
+
+                                    before_all_failed := false;
+                                    if success {
+                                        success, exception = run_hooks(suite_configurations[suite_configurations.count - 1].before_all, reverse=false);
+                                        before_all_failed = !success;
+                                    }
 
                                     if success {
                                         j: s64 = 0;
@@ -2612,7 +2747,36 @@ main :: () {
                                         i.* += suite_configurations[suite_configurations.count - 1].pending_count;
                                     }
 
+                                    if before_all_failed {
+                                        set_print_color(.red);
+                                        print(*output, "✘ ");
+                                        reset_print_styling();
+                                        print_test_path();
+                                        set_print_color(.brightBlack);
+                                        set_print_dim();
+                                        print(*output, "[beforeAll]");
+                                        reset_print_styling();
+                                        print(*output, "\n");
+                                        failed += 1;
+                                    }
                                     print_test_exception(exception);
+
+                                    if atomic_load(*interruption) != .SIGINT {
+                                        after_all_success, after_all_exception := run_hooks(suite_configurations[suite_configurations.count - 1].after_all, reverse=true);
+                                        if !after_all_success {
+                                            set_print_color(.red);
+                                            print(*output, "✘ ");
+                                            reset_print_styling();
+                                            print_test_path();
+                                            set_print_color(.brightBlack);
+                                            set_print_dim();
+                                            print(*output, "[afterAll]");
+                                            reset_print_styling();
+                                            print(*output, "\n");
+                                            print_test_exception(after_all_exception);
+                                            failed += 1;
+                                        }
+                                    }
 
                                     set_print_color(.brightBlack);
                                     set_print_dim();
@@ -2627,7 +2791,30 @@ main :: () {
                                     defer test_state.expected_to_fail = false;
 
                                     cp := quiesce_checkpoint();
-                                    success, exception := call_testing_function(callback, this, test_state.timeout_ms);
+
+                                    success := true;
+                                    exception: napi_value;
+                                    hook_failure_tag := "";
+
+                                    for k: 0..suite_configurations.count - 1 {
+                                        success, exception = run_hooks(suite_configurations[k].before_each, reverse=false);
+                                        if !success break;
+                                    }
+                                    if !success {
+                                        hook_failure_tag = "[beforeEach]";
+                                    } else {
+                                        success, exception = call_testing_function(callback, this, test_state.timeout_ms);
+                                    }
+
+                                    for < k: 0..suite_configurations.count - 1 {
+                                        after_success, after_exception := run_hooks(suite_configurations[k].after_each, reverse=true);
+                                        if !after_success && success {
+                                            success = false;
+                                            exception = after_exception;
+                                            hook_failure_tag = "[afterEach]";
+                                        }
+                                    }
+
                                     if !success {
                                         test_state.passed = false;
                                     }
@@ -2647,6 +2834,11 @@ main :: () {
                                             set_print_dim();
                                             print(*output, "[test.failing]");
                                         }
+                                        if hook_failure_tag.count > 0 {
+                                            set_print_color(.brightBlack);
+                                            set_print_dim();
+                                            print(*output, "%", hook_failure_tag);
+                                        }
                                         passed += 1;
                                     } else {
                                         set_print_color(.red);
@@ -2657,6 +2849,11 @@ main :: () {
                                             set_print_color(.brightBlack);
                                             set_print_dim();
                                             print(*output, "[test.failing]");
+                                        }
+                                        if hook_failure_tag.count > 0 {
+                                            set_print_color(.brightBlack);
+                                            set_print_dim();
+                                            print(*output, "%", hook_failure_tag);
                                         }
                                         failed += 1;
                                     }
@@ -2688,25 +2885,51 @@ main :: () {
                                 };
                             }
 
-                            // though I hate the fact that we're collecting to run, this is required if we want to provide a good experience to users, so
-                            // the performance cost should not be relevant to that in this case.
-                            //
-                            // in the future, we will have an API for defining tests that does not use this stupid callback pattern for various reasons,
-                            // and this is one of the things we would not have to do with it.
-                            i: s64 = 0;
-                            // while loop because Jai's for loop copies the array's data and count which will change since this will run suites and
-                            // aggregate more pending tests
-                            while i < pending.count && atomic_load(*interruption) != .SIGINT {
-                                defer i += 1;
-
-                                // if we're gathering, we will need to allocate the data elsewhere to use once all tests are done and we can show the test output
-                                // process_output_capture: ProcessOutputCapture;
-                                // init_process_output_capture(*process_output_capture);
-                                // defer deinit_process_output_capture(*process_output_capture);
-
-                                run_pending_thing(*i);
+                            print_root_hook_failure :: (tag: string, exception: napi_value) {
+                                set_print_color(.red);
+                                print(*output, "✘ ");
+                                reset_print_styling();
+                                print_test_path();
+                                set_print_color(.brightBlack);
+                                set_print_dim();
+                                print(*output, "%", tag);
+                                reset_print_styling();
+                                print(*output, "\n");
+                                print_test_exception(exception);
+                                failed += 1;
+                                write_builder(*output);
                             }
 
+                            root_before_all_success, root_before_all_exception := run_hooks(suite_configurations[suite_configurations.count - 1].before_all, reverse=false);
+                            if !root_before_all_success {
+                                print_root_hook_failure("[beforeAll]", root_before_all_exception);
+                            } else {
+                                // though I hate the fact that we're collecting to run, this is required if we want to provide a good experience to users, so
+                                // the performance cost should not be relevant to that in this case.
+                                //
+                                // in the future, we will have an API for defining tests that does not use this stupid callback pattern for various reasons,
+                                // and this is one of the things we would not have to do with it.
+                                i: s64 = 0;
+                                // while loop because Jai's for loop copies the array's data and count which will change since this will run suites and
+                                // aggregate more pending tests
+                                while i < pending.count && atomic_load(*interruption) != .SIGINT {
+                                    defer i += 1;
+
+                                    // if we're gathering, we will need to allocate the data elsewhere to use once all tests are done and we can show the test output
+                                    // process_output_capture: ProcessOutputCapture;
+                                    // init_process_output_capture(*process_output_capture);
+                                    // defer deinit_process_output_capture(*process_output_capture);
+
+                                    run_pending_thing(*i);
+                                }
+                            }
+
+                            if atomic_load(*interruption) != .SIGINT {
+                                root_after_all_success, root_after_all_exception := run_hooks(suite_configurations[suite_configurations.count - 1].after_all, reverse=true);
+                                if !root_after_all_success {
+                                    print_root_hook_failure("[afterAll]", root_after_all_exception);
+                                }
+                            }
                         }
                         assert(suite_configurations.count == 0);
                         assert(test_name_breadcrumb.count == 0);
