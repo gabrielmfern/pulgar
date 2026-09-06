@@ -2282,6 +2282,82 @@ main :: () {
             }
             register_assertion("toContainEqual", to_contain_equal, not_to_contain_equal);
 
+            length_of :: (env: napi_env, value: napi_value) -> napi_value, descriptor: string #expand {
+                kind := v8_value_kind_of(value);
+                if kind == .MAP || kind == .SET {
+                    size: napi_value;
+                    napi_try(napi_get_named_property(env, value, "size".data, *size));
+                    return size, "size";
+                }
+                type: napi_valuetype;
+                napi_try(napi_typeof(env, value, *type));
+                if type == .napi_object || type == .napi_function {
+                    has_length: bool;
+                    napi_try(napi_has_named_property(env, value, "length".data, *has_length));
+                    if !has_length {
+                        throw_error(env, "expected % to have a length property", inspect(env, value));
+                        `return null;
+                    }
+                } else if type != .napi_string {
+                    throw_error(env, "expected % to have a length property", inspect(env, value));
+                    `return null;
+                }
+                length: napi_value;
+                napi_try(napi_get_named_property(env, value, "length".data, *length));
+                return length, "length";
+            }
+
+            to_have_length :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    actual: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *actual));
+                    argc: u64 = 1;
+                    expected: napi_value;
+                    napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
+
+                    expected_type: napi_valuetype;
+                    napi_try(napi_typeof(env, expected, *expected_type));
+                    if expected_type != .napi_number {
+                        throw_error(env, "toHaveLength expects a number, got %", inspect(env, expected));
+                        return null;
+                    }
+                    length, descriptor := length_of(env, actual);
+                    same: bool;
+                    napi_try(napi_strict_equals(env, length, expected, *same));
+                    if !same {
+                        throw_error(env, "expected % to have a % of % but got %", inspect(env, actual), descriptor, inspect(env, expected), inspect(env, length));
+                    }
+                }
+                return null;
+            }
+
+            not_to_have_length :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    actual: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *actual));
+                    argc: u64 = 1;
+                    expected: napi_value;
+                    napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
+
+                    expected_type: napi_valuetype;
+                    napi_try(napi_typeof(env, expected, *expected_type));
+                    if expected_type != .napi_number {
+                        throw_error(env, "toHaveLength expects a number, got %", inspect(env, expected));
+                        return null;
+                    }
+                    length, descriptor := length_of(env, actual);
+                    same: bool;
+                    napi_try(napi_strict_equals(env, length, expected, *same));
+                    if same {
+                        throw_error(env, "expected % not to have a % of %", inspect(env, actual), descriptor, inspect(env, expected));
+                    }
+                }
+                return null;
+            }
+            register_assertion("toHaveLength", to_have_length, not_to_have_length);
+
             napi_check(napi_set_named_property(napi_env_instance, matcher, "not".data, negated_matcher));
         }
 
