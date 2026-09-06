@@ -1782,6 +1782,7 @@ main :: () {
                                     reset_print_styling();
                                 } else {
                                     test_state.timeout_ms = it.timeout_ms;
+                                    test_state.start = current_time_monotonic();
                                     test_state.passed = true;
                                     test_state.expected_to_fail = it.expected_to_fail;
                                     defer test_state.expected_to_fail = false;
@@ -1863,8 +1864,8 @@ main :: () {
                                 // defer deinit_process_output_capture(*process_output_capture);
 
                                 run_pending_thing(*i);
-                                test_state.start = current_time_monotonic();
                             }
+
                         }
                         assert(suite_configurations.count == 0);
                         assert(test_name_breadcrumb.count == 0);
@@ -1887,11 +1888,7 @@ main :: () {
                 }
             }
             reset(*test_pool);
-            // I like to count time in between tests since that's the honest time, the time 
-            // taken also for IO in between tests, for all of the memory work and etc.
-            test_state.start = current_time_monotonic();
         }
-        test_state.start = current_time_monotonic();
         visit_files(".", recursive=true, null, file_visitor, visit_directories=true);
     }
 
