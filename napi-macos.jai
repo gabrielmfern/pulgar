@@ -297,16 +297,13 @@ v8_scope :: struct {}
 node_initialize_once_per_process :: () -> *node_initialization_result #foreign shim;
 node_initialization_result_early_return :: (result: *node_initialization_result) -> s32 #foreign shim;
 node_initialization_result_exit_code :: (result: *node_initialization_result) -> s32 #foreign shim;
-node_tear_down_once_per_process :: () -> void #foreign shim;
 
 node_multi_isolate_platform_create :: (thread_pool_size: s32) -> *node_multi_isolate_platform #foreign shim;
 
 v8_initialize :: (platform: *node_multi_isolate_platform) -> void #foreign shim;
-v8_dispose :: (platform: *node_multi_isolate_platform) -> void #foreign shim;
 
 node_common_environment_setup_create :: (platform: *node_multi_isolate_platform, result: *node_initialization_result) -> *node_common_environment_setup #foreign shim;
 node_common_environment_setup_env :: (setup: *node_common_environment_setup) -> *node_environment #foreign shim;
-node_common_environment_setup_destroy :: (setup: *node_common_environment_setup) -> void #foreign shim;
 
 v8_scope_open :: (setup: *node_common_environment_setup) -> *v8_scope #foreign shim;
 v8_scope_close :: (scope: *v8_scope) -> void #foreign shim;
@@ -315,7 +312,6 @@ node_add_linked_binding :: (env: *node_environment, name: *u8, fn: napi_addon_re
 node_load_environment :: (env: *node_environment, script: *u8) -> s32 #foreign shim;
 node_load_environment_module :: (env: *node_environment, source: *u8, resource_name: *u8) -> s32 #foreign shim;
 node_spin_event_loop :: (env: *node_environment) -> s32 #foreign shim;
-node_stop :: (env: *node_environment) -> s32 #foreign shim;
 node_spin_event_loop_once :: (setup: *node_common_environment_setup) -> s32 #foreign shim;
 node_stop_event_loop :: (setup: *node_common_environment_setup) -> void #foreign shim;
 node_cancel_terminate_execution :: (setup: *node_common_environment_setup) -> void #foreign shim;
