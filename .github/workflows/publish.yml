@@ -45,6 +45,13 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install ninja
 
+      - name: use newest available xcode
+        if: runner.os == 'macOS'
+        run: |
+          ls -d /Applications/Xcode*.app
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          clang --version
+
       - name: fetch jai + lld
         env:
           GH_TOKEN: ${{ secrets.JAI_TOOLCHAIN_TOKEN }}
