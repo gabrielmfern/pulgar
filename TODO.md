@@ -29,7 +29,7 @@ TO-DO list for public launch:
     - [x] `expect.toBeTruthy(): void`
     - [x] `expect.toBeFalsy(): void`
     - [ ] Support importing bare specifiers by doing an `import()` from the host and wrapping the result in a `vm.SyntheticModule`
-    - [ ] `import.meta.url` and `import.meta.dirname` are undefined. Fix: pass `initializeImportMeta` to `vm.SourceTextModule`
+    - [x] `import.meta.url` and `import.meta.dirname` are undefined. Fix: pass `initializeImportMeta` to `vm.SourceTextModule`
     - [ ] `expect.toThrow(expected?: string | RegExp | Error | Function): void`
     - [ ] `expect.toThrowError(expected?: string | RegExp | Error | Function): void` (alias of `toThrow`)
     - [ ] `expect.toBeTypeOf(type: string): void`

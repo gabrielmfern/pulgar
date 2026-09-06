@@ -1,3 +1,7 @@
+interface ImportMeta {
+  dir: string;
+}
+
 type TestCallback = (
   name: string,
   callback: (() => void) | (() => Promise<void>),
