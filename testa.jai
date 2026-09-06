@@ -866,6 +866,7 @@ TestState :: struct {
 };
 test_name_breadcrumb: [..]string;
 test_state: TestState;
+time_inside_tests: Apollo_Time;
 
 Filter :: struct {
     text: string;
@@ -1267,6 +1268,7 @@ BOOTSTRAP :: #run,host -> string {
 }
 
 main :: () {
+    run_start := current_time_monotonic();
     pool: Pool;
 
     pool_context := context;
@@ -1822,6 +1824,7 @@ main :: () {
                                         failed += 1;
                                     }
                                     duration := current_time_monotonic() - test_state.start;
+                                    time_inside_tests += duration;
 
                                     set_print_color(.brightBlack);
                                     set_print_dim();
@@ -1889,7 +1892,64 @@ main :: () {
             }
             reset(*test_pool);
         }
-        visit_files(".", recursive=true, null, file_visitor, visit_directories=true);
+        #if OS == .WINDOWS {
+            visit_files(".", recursive=true, null, file_visitor, visit_directories=true);
+        } else {
+            #import "POSIX";
+            #import "System";
+
+            directories: [..] string;
+            directories.allocator = temp;
+            array_add(*directories, ".");
+
+            cursor := 0;
+            while cursor < directories.count {
+                dir_name := directories[cursor];
+                cursor += 1;
+
+                dirp := opendir(temp_c_string(dir_name));
+                if !dirp {
+                    if cursor != 1 {
+                        continue;
+                    }
+                    error_value, error_string := get_error_value_and_string();
+                    log_error("Unable to open directory '%': % %", dir_name, error_value, error_string);
+                    break;
+                }
+                defer closedir(dirp);
+
+                entry := readdir(dirp);
+                while entry != null {
+                    defer entry = readdir(dirp);
+
+                    name := to_string(entry.d_name.data);
+                    if name == "." || name == ".." {
+                        continue;
+                    }
+
+                    info: File_Visit_Info;
+                    info.short_name = name;
+                    info.full_name  = join(dir_name, "/", name,, temp);
+                    info.is_symlink = entry.d_type == .LNK;
+
+                    if entry.d_type == .DIR {
+                        info.is_directory = true;
+                    } else if entry.d_type == .LNK || entry.d_type == .UNKNOWN {
+                        stats: stat_t;
+                        if stat(temp_c_string(info.full_name), *stats) == 0 {
+                            info.is_directory = S_ISDIR(stats.st_mode);
+                        } else {
+                            info.had_error = true;
+                        }
+                    }
+
+                    file_visitor(*info, null);
+                    if info.is_directory && info.descend_into_directory {
+                        array_add(*directories, info.full_name);
+                    }
+                }
+            }
+        }
     }
 
     set_print_color(.red);
@@ -1935,9 +1995,27 @@ main :: () {
         reset_print_styling();
     }
 
+    total := current_time_monotonic() - run_start;
+    set_print_color(.brightBlack);
+    set_print_dim();
+    if to_seconds(total) > 0 {
+        print(" in %s", to_seconds(total));
+    } else if to_milliseconds(total) > 0 {
+        print(" in %ms", to_milliseconds(total));
+    } else {
+        print(" in %μs", to_microseconds(total));
+    }
+    reset_print_styling();
+
     print("\n");
 
     #if DEBUG {
+        outside := total - time_inside_tests;
+        set_print_color(.brightBlack);
+        set_print_dim();
+        print("%ms outside of tests\n", to_milliseconds(outside));
+        reset_print_styling();
+
         release(*pool);
         report_memory_leaks();
     }
