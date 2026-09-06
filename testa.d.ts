@@ -58,6 +58,7 @@ type Assertions<T> = {
   toBeLessThan(expected: number | bigint): void;
   toBeLessThanOrEqual(expected: number | bigint): void;
   toContain(item: unknown): void;
+  toContainEqual(item: unknown): void;
 };
 
 declare function expect<T>(received: T): {

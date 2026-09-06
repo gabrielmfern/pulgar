@@ -2213,6 +2213,75 @@ main :: () {
             }
             register_assertion("toContain", to_contain, not_to_contain);
 
+            array_contains_equal :: (env: napi_env, array: napi_value, item: napi_value) -> bool #expand {
+                length: u32;
+                napi_try(napi_get_array_length(env, array, *length));
+                scope: napi_handle_scope;
+                napi_try(napi_open_handle_scope(env, *scope));
+                defer napi_check(napi_close_handle_scope(env, scope));
+                for 0..cast(s64) length - 1 {
+                    element: napi_value;
+                    napi_try(napi_get_element(env, array, xx it, *element));
+                    if deep_equal(env, element, item, null) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            to_contain_equal :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    actual: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *actual));
+                    argc: u64 = 1;
+                    expected: napi_value;
+                    napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
+
+                    actual_type: napi_valuetype;
+                    napi_try(napi_typeof(env, actual, *actual_type));
+                    if actual_type != .napi_object && actual_type != .napi_string {
+                        throw_error(env, "expected % to be a string or an iterable", inspect(env, actual));
+                        return null;
+                    }
+                    array := actual;
+                    if v8_value_kind_of(actual) != .ARRAY {
+                        napi_try(napi_call_function(env, array_constructor, array_from_fn, 1, *actual, *array));
+                    }
+                    if !array_contains_equal(env, array, expected) {
+                        throw_error(env, "expected % to contain an element equal to %", inspect(env, actual), inspect(env, expected));
+                    }
+                }
+                return null;
+            }
+
+            not_to_contain_equal :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    actual: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *actual));
+                    argc: u64 = 1;
+                    expected: napi_value;
+                    napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
+
+                    actual_type: napi_valuetype;
+                    napi_try(napi_typeof(env, actual, *actual_type));
+                    if actual_type != .napi_object && actual_type != .napi_string {
+                        throw_error(env, "expected % to be a string or an iterable", inspect(env, actual));
+                        return null;
+                    }
+                    array := actual;
+                    if v8_value_kind_of(actual) != .ARRAY {
+                        napi_try(napi_call_function(env, array_constructor, array_from_fn, 1, *actual, *array));
+                    }
+                    if array_contains_equal(env, array, expected) {
+                        throw_error(env, "expected % not to contain an element equal to %", inspect(env, actual), inspect(env, expected));
+                    }
+                }
+                return null;
+            }
+            register_assertion("toContainEqual", to_contain_equal, not_to_contain_equal);
+
             napi_check(napi_set_named_property(napi_env_instance, matcher, "not".data, negated_matcher));
         }
 
