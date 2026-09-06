@@ -54,10 +54,6 @@ int node_initialization_result_exit_code(node_initialization_result* result) {
     return result->result->exit_code();
 }
 
-void node_tear_down_once_per_process(void) {
-    node::TearDownOncePerProcess();
-}
-
 node_multi_isolate_platform* node_multi_isolate_platform_create(int thread_pool_size) {
     return new node_multi_isolate_platform{node::MultiIsolatePlatform::Create(thread_pool_size)};
 }
@@ -65,12 +61,6 @@ node_multi_isolate_platform* node_multi_isolate_platform_create(int thread_pool_
 void v8_initialize(node_multi_isolate_platform* platform) {
     v8::V8::InitializePlatform(platform->platform.get());
     v8::V8::Initialize();
-}
-
-void v8_dispose(node_multi_isolate_platform* platform) {
-    v8::V8::Dispose();
-    v8::V8::DisposePlatform();
-    delete platform;
 }
 
 node_common_environment_setup* node_common_environment_setup_create(node_multi_isolate_platform* platform, node_initialization_result* result) {
@@ -93,11 +83,6 @@ node_common_environment_setup* node_common_environment_setup_create(node_multi_i
 
 node_environment* node_common_environment_setup_env(node_common_environment_setup* setup) {
     return (node_environment*)setup->setup->env();
-}
-
-void node_common_environment_setup_destroy(node_common_environment_setup* setup) {
-    uv_close((uv_handle_t*)&setup->stop_async, nullptr);
-    delete setup;
 }
 
 v8_scope* v8_scope_open(node_common_environment_setup* setup) {
@@ -128,10 +113,6 @@ int node_load_environment_module(node_environment* env, const char* source, cons
 
 int node_spin_event_loop(node_environment* env) {
     return node::SpinEventLoop((node::Environment*)env).FromMaybe(1);
-}
-
-int node_stop(node_environment* env) {
-    return node::Stop((node::Environment*)env);
 }
 
 int node_spin_event_loop_once(node_common_environment_setup* setup) {

@@ -1269,6 +1269,7 @@ BOOTSTRAP :: #run,host -> string {
 
 main :: () {
     run_start := current_time_monotonic();
+    boot_done, walk_done: Apollo_Time;
     pool: Pool;
 
     pool_context := context;
@@ -1310,17 +1311,13 @@ main :: () {
 
         init := node_initialize_once_per_process();
         if node_initialization_result_early_return(init) != 0 exit(node_initialization_result_exit_code(init));
-        defer node_tear_down_once_per_process();
 
         platform := node_multi_isolate_platform_create(4);
         v8_initialize(platform);
-        defer v8_dispose(platform);
 
         node_setup = node_common_environment_setup_create(platform, init);
         if !node_setup exit(1);
-        defer node_common_environment_setup_destroy(node_setup);
         node_env = node_common_environment_setup_env(node_setup);
-        defer node_stop(node_env);
 
         watchdog_init(*watchdog, node_setup);
         defer watchdog_shutdown(*watchdog);
@@ -1662,6 +1659,7 @@ main :: () {
             }
         }
         napi_check(napi_create_function(napi_env_instance, "noop".data, "noop".count, noop, null, *noop_fn));
+        boot_done = current_time_monotonic();
 
         file_visitor :: (info: *File_Visit_Info, user_data: *void) {
             auto_release_temp();
@@ -1950,6 +1948,7 @@ main :: () {
                 }
             }
         }
+        walk_done = current_time_monotonic();
     }
 
     set_print_color(.red);
@@ -2013,7 +2012,10 @@ main :: () {
         outside := total - time_inside_tests;
         set_print_color(.brightBlack);
         set_print_dim();
-        print("%ms outside of tests\n", to_milliseconds(outside));
+        print("%ms outside of tests: %ms boot, %ms files\n",
+            to_milliseconds(outside),
+            to_milliseconds(boot_done - run_start),
+            to_milliseconds(walk_done - boot_done - time_inside_tests));
         reset_print_styling();
 
         release(*pool);
