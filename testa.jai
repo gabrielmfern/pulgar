@@ -691,20 +691,30 @@ colors :: string.[
     "\e[90m", "\e[91m", "\e[92m", "\e[93m", "\e[94m", "\e[95m", "\e[96m", "\e[97m"
 ];
 
+use_colors: bool;
+
 set_print_color :: (color: Color) {
-    print(*output, colors[xx color]);
+    if use_colors {
+        print(*output, colors[xx color]);
+    }
 }
 
 set_print_bold :: () {
-    print(*output, "\e[1m");
+    if use_colors {
+        print(*output, "\e[1m");
+    }
 }
 
 set_print_dim :: () {
-    print(*output, "\e[2m");
+    if use_colors {
+        print(*output, "\e[2m");
+    }
 }
 
 reset_print_styling :: () {
-    print(*output, "\e[0m");
+    if use_colors {
+        print(*output, "\e[0m");
+    }
 }
 
 ProcessOutputCapture :: struct {
@@ -1359,6 +1369,12 @@ main :: () {
                 return 1;
             }
             SetConsoleCtrlHandler(on_ctrl_c, 1);
+
+            console_mode: DWORD;
+            stdout_is_tty = GetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), *console_mode) != .FALSE;
+            if stdout_is_tty {
+                SetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), console_mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+            }
         } else {
             #import "POSIX";
 
@@ -1376,6 +1392,22 @@ main :: () {
                 signal :: (sig: s32, handler: (s32) -> () #c_call) -> *void #foreign libc;
             }
             signal(SIGINT, on_ctrl_c);
+        }
+
+        {
+            #if OS == .WINDOWS {
+                #import "Windows";
+            } else {
+                #import "POSIX";
+            }
+            force_color := getenv("FORCE_COLOR".data);
+            if force_color {
+                force := to_string(force_color);
+                use_colors = force == "" || force == "1" || force == "true" || force == "2" || force == "3";
+            } else {
+                term := getenv("TERM".data);
+                use_colors = stdout_is_tty && getenv("NO_COLOR".data) == null && (term == null || to_string(term) != "dumb");
+            }
         }
 
         scope := v8_scope_open(node_setup);
