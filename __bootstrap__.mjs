@@ -31,6 +31,10 @@ process.stdout.write('');
 process.stderr.write('');
 
 const cache = new Map();
+const hostImport = new vm.Script('specifier => import(specifier)', {
+  importModuleDynamically: vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER,
+}).runInThisContext();
+const { resolve } = await hostImport('data:text/javascript,export const resolve = import.meta.resolve');
 
 function isTypeScript(url) {
   return url.endsWith('.ts') || url.endsWith('.mts') || url.endsWith('.cts');
@@ -79,8 +83,27 @@ async function loadBuiltin(specifier) {
   return mod;
 }
 
+async function loadPackage(url) {
+  let mod = cache.get(url);
+  if (mod) return mod;
+  const namespace = await hostImport(url);
+  mod = new vm.SyntheticModule(Object.keys(namespace), function() {
+    for (const key of Object.keys(namespace)) this.setExport(key, namespace[key]);
+  });
+  cache.set(url, mod);
+  await mod.link(linker);
+  await mod.evaluate();
+  return mod;
+}
+
+function isBare(specifier) {
+  if (specifier.startsWith('./') || specifier.startsWith('../') || specifier.startsWith('/')) return false;
+  return !URL.canParse(specifier);
+}
+
 function linker(specifier, referencingModule) {
   if (isBuiltin(specifier)) return loadBuiltin(specifier);
+  if (isBare(specifier)) return loadPackage(resolve(specifier, referencingModule.identifier));
   return loadModule(new URL(specifier, referencingModule.identifier).href);
 }
 
