@@ -1,6 +1,6 @@
 {
   "name": "pulgar",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "A test runner with Node.js embedded",
   "repository": {
     "type": "git",
