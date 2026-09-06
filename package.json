@@ -19,8 +19,7 @@
     "pulgar.d.ts"
   ],
   "optionalDependencies": {
-    "@pulgar/linux-x64": "0.0.1",
-    "@pulgar/darwin-arm64": "0.0.1",
-    "@pulgar/win32-x64": "0.0.1"
+    "@pulgar/linux-x64": "0.0.2",
+    "@pulgar/darwin-arm64": "0.0.2"
   }
 }
