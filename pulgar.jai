@@ -363,6 +363,8 @@ stringify :: (value: napi_value) -> string {
                 return "Date { NaN }";
             }
             return string_from_napi_value(v8_date_iso_string(value));
+        case v8_value_kind.ERROR;
+            return sprint("[%]", describe_exception(value));
         case;
             return "";
     }
