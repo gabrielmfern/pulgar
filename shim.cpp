@@ -268,6 +268,10 @@ napi_value v8_set_as_array(napi_value value) {
     return to_napi(to_local(value).As<v8::Set>()->AsArray());
 }
 
+napi_value v8_date_iso_string(napi_value value) {
+    return to_napi(to_local(value).As<v8::Date>()->ToISOString());
+}
+
 int v8_same_object(napi_value a, napi_value b) {
     v8::Local<v8::Value> va, vb;
     memcpy(static_cast<void*>(&va), &a, sizeof(a));

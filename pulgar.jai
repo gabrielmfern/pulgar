@@ -352,6 +352,17 @@ stringify :: (value: napi_value) -> string {
                 return "Symbol()";
             }
             return sprint("Symbol(%)", string_from_napi_value(description));
+        case v8_value_kind.WEAK_MAP;
+            return "WeakMap {}";
+        case v8_value_kind.WEAK_SET;
+            return "WeakSet {}";
+        case v8_value_kind.DATE;
+            t: float64;
+            napi_check(napi_get_date_value(napi_env_instance, value, *t));
+            if isnan(t) {
+                return "Date { NaN }";
+            }
+            return string_from_napi_value(v8_date_iso_string(value));
         case;
             return "";
     }

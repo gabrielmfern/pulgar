@@ -92,6 +92,7 @@ SHIM_EXPORT size_t v8_map_size(napi_value value);
 SHIM_EXPORT size_t v8_set_size(napi_value value);
 SHIM_EXPORT napi_value v8_map_as_array(napi_value value);
 SHIM_EXPORT napi_value v8_set_as_array(napi_value value);
+SHIM_EXPORT napi_value v8_date_iso_string(napi_value value);
 
 #ifdef __cplusplus
 }
