@@ -4,7 +4,7 @@
   "description": "A test runner with Node.js embedded",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/gabrielmfern/testa.git"
+    "url": "git+https://github.com/gabrielmfern/pulgar.git"
   },
   "bin": {
     "pulgar": "bin/pulgar.mjs"

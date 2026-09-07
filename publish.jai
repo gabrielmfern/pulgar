@@ -56,7 +56,7 @@ publish :: () -> bool {
   "description": "%1 %2 binary for pulgar",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/gabrielmfern/testa.git"
+    "url": "git+https://github.com/gabrielmfern/pulgar.git"
   },
   "os": ["%1"],
   "cpu": ["%2"],
