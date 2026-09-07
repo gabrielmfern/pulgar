@@ -92,8 +92,8 @@ build :: () {
         } else {
             array_add(*libraries, .{filename=tprint("%/libnode", libnode_dir), identifier="libnode"});
         }
-        array_add(*libraries, .{filename=".build/shim", identifier="shim"});
-        // #library paths are resolved relative to the generated file, which sits in .build/.
+        array_add(*library_search_paths, ".", ".build");
+        array_add(*libraries, .{filename="shim", identifier="shim"});
         generated_library_path_prefix = "../";
 
         array_add(*source_files, "shim.h", "vendor/node/src/js_native_api.h");
@@ -127,11 +127,7 @@ build :: () {
         options.output_executable_name = "pulgar";
         options.output_path = dist_dir;
         #if OS == .LINUX {
-            // libgcc_s carries _Unwind_Resume, which the shim's C++ objects reference now that
-            // they are linked into the executable instead of into a shared library.
-            // By exact filename: the libgcc_s.so dev symlink lives in a gcc-version-specific
-            // directory that is not on the linker's default search path, but the runtime library is.
-            options.additional_linker_arguments = .["-lstdc++", "-l:libgcc_s.so.1"];
+            options.additional_linker_arguments = .["-l:libstdc++.so.6", "-l:libgcc_s.so.1"];
         } else #if OS == .MACOS {
             options.additional_linker_arguments = .["-lc++"];
         }
