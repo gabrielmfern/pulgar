@@ -136,6 +136,7 @@ jobs:
         with:
           name: pkg-${{ matrix.platform }}
           path: pkg
+      - run: chmod +x pkg/pulgar
       - uses: actions/setup-node@v4
         with:
           node-version: 24
