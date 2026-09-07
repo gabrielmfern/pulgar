@@ -61,15 +61,15 @@ jobs:
           GH_TOKEN: ${{ secrets.JAI_TOOLCHAIN_TOKEN }}
         shell: bash
         run: |
-          mkdir -p "$RUNNER_TEMP/jai"
+          mkdir -p "$RUNNER_TEMP/jai/bin"
           gh release download v1 \
             --repo gabrielmfern/jai-toolchain \
             --pattern "${{ matrix.jai }}" --pattern "${{ matrix.lld }}" --pattern modules.tar.gz \
-            --dir "$RUNNER_TEMP/jai" \
+            --dir "$RUNNER_TEMP/jai/bin" \
             --clobber
-          tar -C "$RUNNER_TEMP/jai" -xzf "$RUNNER_TEMP/jai/modules.tar.gz"
-          chmod +x "$RUNNER_TEMP/jai/${{ matrix.jai }}" "$RUNNER_TEMP/jai/${{ matrix.lld }}" || true
-          echo "$RUNNER_TEMP/jai" >> "$GITHUB_PATH"
+          tar -C "$RUNNER_TEMP/jai" -xzf "$RUNNER_TEMP/jai/bin/modules.tar.gz"
+          chmod +x "$RUNNER_TEMP/jai/bin/${{ matrix.jai }}" "$RUNNER_TEMP/jai/bin/${{ matrix.lld }}" || true
+          echo "$RUNNER_TEMP/jai/bin" >> "$GITHUB_PATH"
 
       - name: get vendor/node commit
         id: submodule
