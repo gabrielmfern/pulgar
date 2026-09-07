@@ -56,7 +56,7 @@ jobs:
           sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
           clang --version
 
-      - name: fetch jai + lld
+      - name: fetch jai + lld + modules
         env:
           GH_TOKEN: ${{ secrets.JAI_TOOLCHAIN_TOKEN }}
         shell: bash
@@ -64,9 +64,10 @@ jobs:
           mkdir -p "$RUNNER_TEMP/jai"
           gh release download v1 \
             --repo gabrielmfern/jai-toolchain \
-            --pattern "${{ matrix.jai }}" --pattern "${{ matrix.lld }}" \
+            --pattern "${{ matrix.jai }}" --pattern "${{ matrix.lld }}" --pattern modules.tar.gz \
             --dir "$RUNNER_TEMP/jai" \
             --clobber
+          tar -C "$RUNNER_TEMP/jai" -xzf "$RUNNER_TEMP/jai/modules.tar.gz"
           chmod +x "$RUNNER_TEMP/jai/${{ matrix.jai }}" "$RUNNER_TEMP/jai/${{ matrix.lld }}" || true
           echo "$RUNNER_TEMP/jai" >> "$GITHUB_PATH"
 
@@ -75,9 +76,9 @@ jobs:
         shell: bash
         run: echo "sha=$(git rev-parse HEAD:vendor/node)" >> "$GITHUB_OUTPUT"
 
-      - name: cache node build
+      - name: restore node build
         id: node-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: vendor/node/out
           key: node-build-${{ matrix.os }}-${{ steps.submodule.outputs.sha }}
@@ -98,6 +99,13 @@ jobs:
         working-directory: vendor/node
         shell: cmd
         run: vcbuild.bat dll
+
+      - name: save node build
+        if: steps.node-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: vendor/node/out
+          key: ${{ steps.node-cache.outputs.cache-primary-key }}
 
       # Builds optimized and writes dist/<platform>/package.json for the
       # @pulgar/<platform> package - see publish.jai. Every run builds and
