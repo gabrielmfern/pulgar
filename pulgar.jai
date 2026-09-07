@@ -68,16 +68,16 @@ napi_try :: (status: napi_status) #expand {
 }
 
 // performant version of Object.is
-object_is :: (env: napi_env, a: napi_value, b: napi_value) -> bool {
+object_is :: (a: napi_value, b: napi_value) -> bool {
   same: bool;
-  napi_check(napi_strict_equals(env, a, b, *same));
+  napi_check(napi_strict_equals(napi_env_instance, a, b, *same));
   a_type, b_type: napi_valuetype;
-  napi_check(napi_typeof(env, a, *a_type));
-  napi_check(napi_typeof(env, b, *b_type));
+  napi_check(napi_typeof(napi_env_instance, a, *a_type));
+  napi_check(napi_typeof(napi_env_instance, b, *b_type));
   if a_type == .napi_number && b_type == .napi_number {
       x, y: float64;
-      napi_check(napi_get_value_double(env, a, *x));
-      napi_check(napi_get_value_double(env, b, *y));
+      napi_check(napi_get_value_double(napi_env_instance, a, *x));
+      napi_check(napi_get_value_double(napi_env_instance, b, *y));
       if same && x == 0 {
           same = (1 / x) == (1 / y);
       } else if !same {
@@ -92,7 +92,7 @@ Eq_Frame :: struct {
     parent: *Eq_Frame;
 }
 
-deep_equal :: (env: napi_env, a: napi_value, b: napi_value, parent: *Eq_Frame) -> bool {
+deep_equal :: (a: napi_value, b: napi_value, parent: *Eq_Frame) -> bool {
     try :: (status: napi_status) #expand {
         if status != .ok {
             if status != .pending_exception {
@@ -104,7 +104,7 @@ deep_equal :: (env: napi_env, a: napi_value, b: napi_value, parent: *Eq_Frame) -
         }
     }
 
-    if object_is(env, a, b) {
+    if object_is(a, b) {
         return true;
     }
 
@@ -129,27 +129,27 @@ deep_equal :: (env: napi_env, a: napi_value, b: napi_value, parent: *Eq_Frame) -
             return false;
         case .STRING_OBJECT;
             same: bool;
-            try(napi_strict_equals(env, v8_string_object_value(a), v8_string_object_value(b), *same));
+            try(napi_strict_equals(napi_env_instance, v8_string_object_value(a), v8_string_object_value(b), *same));
             return same;
         case .BOOLEAN_OBJECT;
             return v8_boolean_object_value(a) == v8_boolean_object_value(b);
         case .DATE;
             x, y: float64;
-            try(napi_get_date_value(env, a, *x));
-            try(napi_get_date_value(env, b, *y));
+            try(napi_get_date_value(napi_env_instance, a, *x));
+            try(napi_get_date_value(napi_env_instance, b, *y));
             if isnan(x) || isnan(y) {
                 return isnan(x) && isnan(y);
             }
             return x == y;
         case .REGEXP;
             a_source, b_source, a_flags, b_flags: napi_value;
-            try(napi_get_named_property(env, a, "source", *a_source));
-            try(napi_get_named_property(env, b, "source", *b_source));
-            try(napi_get_named_property(env, a, "flags", *a_flags));
-            try(napi_get_named_property(env, b, "flags", *b_flags));
+            try(napi_get_named_property(napi_env_instance, a, "source", *a_source));
+            try(napi_get_named_property(napi_env_instance, b, "source", *b_source));
+            try(napi_get_named_property(napi_env_instance, a, "flags", *a_flags));
+            try(napi_get_named_property(napi_env_instance, b, "flags", *b_flags));
             same_source, same_flags: bool;
-            try(napi_strict_equals(env, a_source, b_source, *same_source));
-            try(napi_strict_equals(env, a_flags, b_flags, *same_flags));
+            try(napi_strict_equals(napi_env_instance, a_source, b_source, *same_source));
+            try(napi_strict_equals(napi_env_instance, a_flags, b_flags, *same_flags));
             return same_source && same_flags;
     }
 
@@ -166,21 +166,21 @@ deep_equal :: (env: napi_env, a: napi_value, b: napi_value, parent: *Eq_Frame) -
     frame := Eq_Frame.{a, b, parent};
 
     scope: napi_handle_scope;
-    try(napi_open_handle_scope(env, *scope));
-    defer napi_check(napi_close_handle_scope(env, scope));
+    try(napi_open_handle_scope(napi_env_instance, *scope));
+    defer napi_check(napi_close_handle_scope(napi_env_instance, scope));
 
     if kind == .ARRAY {
         a_length, b_length: u32;
-        try(napi_get_array_length(env, a, *a_length));
-        try(napi_get_array_length(env, b, *b_length));
+        try(napi_get_array_length(napi_env_instance, a, *a_length));
+        try(napi_get_array_length(napi_env_instance, b, *b_length));
         if a_length != b_length {
             return false;
         }
         for 0..cast(s64) a_length - 1 {
             a_element, b_element: napi_value;
-            try(napi_get_element(env, a, xx it, *a_element));
-            try(napi_get_element(env, b, xx it, *b_element));
-            if !deep_equal(env, a_element, b_element, *frame) {
+            try(napi_get_element(napi_env_instance, a, xx it, *a_element));
+            try(napi_get_element(napi_env_instance, b, xx it, *b_element));
+            if !deep_equal(a_element, b_element, *frame) {
                 return false;
             }
         }
@@ -189,34 +189,34 @@ deep_equal :: (env: napi_env, a: napi_value, b: napi_value, parent: *Eq_Frame) -
 
     if kind == .OBJECT {
         a_prototype, b_prototype: napi_value;
-        try(napi_get_prototype(env, a, *a_prototype));
-        try(napi_get_prototype(env, b, *b_prototype));
+        try(napi_get_prototype(napi_env_instance, a, *a_prototype));
+        try(napi_get_prototype(napi_env_instance, b, *b_prototype));
         if v8_same_object(a_prototype, b_prototype) {
             if v8_same_object(a_prototype, url_prototype) {
                 a_href, b_href: napi_value;
-                try(napi_get_named_property(env, a, "href", *a_href));
-                try(napi_get_named_property(env, b, "href", *b_href));
+                try(napi_get_named_property(napi_env_instance, a, "href", *a_href));
+                try(napi_get_named_property(napi_env_instance, b, "href", *b_href));
                 same: bool;
-                try(napi_strict_equals(env, a_href, b_href, *same));
+                try(napi_strict_equals(napi_env_instance, a_href, b_href, *same));
                 return same;
             }
             if temporal_duration_prototype {
                 for temporal_equals_prototypes {
                     if v8_same_object(a_prototype, it) {
                         equals_fn, result: napi_value;
-                        try(napi_get_named_property(env, a, "equals", *equals_fn));
-                        try(napi_call_function(env, a, equals_fn, 1, *b, *result));
+                        try(napi_get_named_property(napi_env_instance, a, "equals", *equals_fn));
+                        try(napi_call_function(napi_env_instance, a, equals_fn, 1, *b, *result));
                         equal: bool;
-                        try(napi_get_value_bool(env, result, *equal));
+                        try(napi_get_value_bool(napi_env_instance, result, *equal));
                         return equal;
                     }
                 }
                 if v8_same_object(a_prototype, temporal_duration_prototype) {
                     a_string, b_string: napi_value;
-                    try(napi_coerce_to_string(env, a, *a_string));
-                    try(napi_coerce_to_string(env, b, *b_string));
+                    try(napi_coerce_to_string(napi_env_instance, a, *a_string));
+                    try(napi_coerce_to_string(napi_env_instance, b, *b_string));
                     same: bool;
-                    try(napi_strict_equals(env, a_string, b_string, *same));
+                    try(napi_strict_equals(napi_env_instance, a_string, b_string, *same));
                     return same;
                 }
             }
@@ -226,23 +226,23 @@ deep_equal :: (env: napi_env, a: napi_value, b: napi_value, parent: *Eq_Frame) -
     if kind == .ERROR {
         for string.["name", "message"] {
             a_field, b_field: napi_value;
-            try(napi_get_named_property(env, a, it.data, *a_field));
-            try(napi_get_named_property(env, b, it.data, *b_field));
+            try(napi_get_named_property(napi_env_instance, a, it.data, *a_field));
+            try(napi_get_named_property(napi_env_instance, b, it.data, *b_field));
             same: bool;
-            try(napi_strict_equals(env, a_field, b_field, *same));
+            try(napi_strict_equals(napi_env_instance, a_field, b_field, *same));
             if !same {
                 return false;
             }
         }
         for string.["cause", "errors"] {
             b_field: napi_value;
-            try(napi_get_named_property(env, b, it.data, *b_field));
+            try(napi_get_named_property(napi_env_instance, b, it.data, *b_field));
             b_type: napi_valuetype;
-            try(napi_typeof(env, b_field, *b_type));
+            try(napi_typeof(napi_env_instance, b_field, *b_type));
             if b_type != .napi_undefined {
                 a_field: napi_value;
-                try(napi_get_named_property(env, a, it.data, *a_field));
-                if !deep_equal(env, a_field, b_field, *frame) {
+                try(napi_get_named_property(napi_env_instance, a, it.data, *a_field));
+                if !deep_equal(a_field, b_field, *frame) {
                     return false;
                 }
             }
@@ -250,20 +250,20 @@ deep_equal :: (env: napi_env, a: napi_value, b: napi_value, parent: *Eq_Frame) -
     }
 
     a_keys, b_keys: napi_value;
-    try(napi_get_all_property_names(env, a, .napi_key_own_only, .napi_key_enumerable, .napi_key_numbers_to_strings, *a_keys));
-    try(napi_get_all_property_names(env, b, .napi_key_own_only, .napi_key_enumerable, .napi_key_numbers_to_strings, *b_keys));
+    try(napi_get_all_property_names(napi_env_instance, a, .napi_key_own_only, .napi_key_enumerable, .napi_key_numbers_to_strings, *a_keys));
+    try(napi_get_all_property_names(napi_env_instance, b, .napi_key_own_only, .napi_key_enumerable, .napi_key_numbers_to_strings, *b_keys));
 
     a_count, b_count: u32;
-    try(napi_get_array_length(env, a_keys, *a_count));
-    try(napi_get_array_length(env, b_keys, *b_count));
+    try(napi_get_array_length(napi_env_instance, a_keys, *a_count));
+    try(napi_get_array_length(napi_env_instance, b_keys, *b_count));
 
     b_defined := 0;
     for 0..cast(s64) b_count - 1 {
         key, value: napi_value;
-        try(napi_get_element(env, b_keys, xx it, *key));
-        try(napi_get_property(env, b, key, *value));
+        try(napi_get_element(napi_env_instance, b_keys, xx it, *key));
+        try(napi_get_property(napi_env_instance, b, key, *value));
         type: napi_valuetype;
-        try(napi_typeof(env, value, *type));
+        try(napi_typeof(napi_env_instance, value, *type));
         if type != .napi_undefined {
             b_defined += 1;
         }
@@ -272,10 +272,10 @@ deep_equal :: (env: napi_env, a: napi_value, b: napi_value, parent: *Eq_Frame) -
     a_defined := 0;
     for 0..cast(s64) a_count - 1 {
         key, a_value, b_value: napi_value;
-        try(napi_get_element(env, a_keys, xx it, *key));
-        try(napi_get_property(env, a, key, *a_value));
+        try(napi_get_element(napi_env_instance, a_keys, xx it, *key));
+        try(napi_get_property(napi_env_instance, a, key, *a_value));
         a_type: napi_valuetype;
-        try(napi_typeof(env, a_value, *a_type));
+        try(napi_typeof(napi_env_instance, a_value, *a_type));
         if a_type == .napi_undefined {
             continue;
         }
@@ -283,18 +283,18 @@ deep_equal :: (env: napi_env, a: napi_value, b: napi_value, parent: *Eq_Frame) -
         if a_defined > b_defined {
             return false;
         }
-        try(napi_get_property(env, b, key, *b_value));
+        try(napi_get_property(napi_env_instance, b, key, *b_value));
         b_type: napi_valuetype;
-        try(napi_typeof(env, b_value, *b_type));
+        try(napi_typeof(napi_env_instance, b_value, *b_type));
         if b_type == .napi_undefined {
             return false;
         }
         b_has_key: bool;
-        try(napi_has_own_property(env, b, key, *b_has_key));
+        try(napi_has_own_property(napi_env_instance, b, key, *b_has_key));
         if !b_has_key {
             return false;
         }
-        if !deep_equal(env, a_value, b_value, *frame) {
+        if !deep_equal(a_value, b_value, *frame) {
             return false;
         }
     }
@@ -1330,23 +1330,23 @@ describe :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
     return null;
 }
 
-add_hook :: (env: napi_env, info: napi_callback_info, api_name: string, hooks: *[..]Hook) -> napi_value {
+add_hook :: (info: napi_callback_info, api_name: string, hooks: *[..]Hook) -> napi_value {
     argc: u64 = 2;
     argv: [2]napi_value;
     this: napi_value;
-    napi_try(napi_get_cb_info(env, info, *argc, argv.data, *this, null));
+    napi_try(napi_get_cb_info(napi_env_instance, info, *argc, argv.data, *this, null));
     callback := argv[0];
     timeout_ms_value := argv[1];
 
     type: napi_valuetype;
-    napi_try(napi_typeof(env, callback, *type));
+    napi_try(napi_typeof(napi_env_instance, callback, *type));
     if type != .napi_function {
-        napi_check(napi_throw_type_error(env, null, tprint("%(fn, timeout?): fn must be a function", api_name).data));
+        napi_check(napi_throw_type_error(napi_env_instance, null, tprint("%(fn, timeout?): fn must be a function", api_name).data));
         return null;
     }
-    napi_try(napi_typeof(env, timeout_ms_value, *type));
+    napi_try(napi_typeof(napi_env_instance, timeout_ms_value, *type));
     if type != .napi_undefined && type != .napi_number {
-        napi_check(napi_throw_type_error(env, null, tprint("%(fn, timeout?): timeout must be a number", api_name).data));
+        napi_check(napi_throw_type_error(napi_env_instance, null, tprint("%(fn, timeout?): timeout must be a number", api_name).data));
         return null;
     }
 
@@ -1361,8 +1361,8 @@ add_hook :: (env: napi_env, info: napi_callback_info, api_name: string, hooks: *
 
     hook: Hook;
     hook.timeout_ms = timeout_ms;
-    napi_try(napi_create_reference(env, callback, 1, *hook.callback));
-    napi_try(napi_create_reference(env, this, 1, *hook.this));
+    napi_try(napi_create_reference(napi_env_instance, callback, 1, *hook.callback));
+    napi_try(napi_create_reference(napi_env_instance, this, 1, *hook.this));
     array_add(hooks, hook);
     return null;
 }
@@ -1370,28 +1370,28 @@ add_hook :: (env: napi_env, info: napi_callback_info, api_name: string, hooks: *
 before_all_fn: napi_value;
 before_all :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
     push_context test_context {
-        return add_hook(env, info, "beforeAll", *suite_configurations[suite_configurations.count - 1].before_all);
+        return add_hook(info, "beforeAll", *suite_configurations[suite_configurations.count - 1].before_all);
     }
 }
 
 after_all_fn: napi_value;
 after_all :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
     push_context test_context {
-        return add_hook(env, info, "afterAll", *suite_configurations[suite_configurations.count - 1].after_all);
+        return add_hook(info, "afterAll", *suite_configurations[suite_configurations.count - 1].after_all);
     }
 }
 
 before_each_fn: napi_value;
 before_each :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
     push_context test_context {
-        return add_hook(env, info, "beforeEach", *suite_configurations[suite_configurations.count - 1].before_each);
+        return add_hook(info, "beforeEach", *suite_configurations[suite_configurations.count - 1].before_each);
     }
 }
 
 after_each_fn: napi_value;
 after_each :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
     push_context test_context {
-        return add_hook(env, info, "afterEach", *suite_configurations[suite_configurations.count - 1].after_each);
+        return add_hook(info, "afterEach", *suite_configurations[suite_configurations.count - 1].after_each);
     }
 }
 
@@ -1556,18 +1556,29 @@ main :: () {
             napi_check(napi_create_object(napi_env_instance, *matcher));
             napi_check(napi_create_object(napi_env_instance, *negated_matcher));
 
-            inspect :: (env: napi_env, value: napi_value) -> string #expand {
+            inspect :: (value: napi_value, compact: bool = true, sorted: bool = false) -> string #expand {
+                options, compact_value, sorted_value: napi_value;
+                napi_try(napi_create_object(napi_env_instance, *options));
+                napi_try(napi_get_boolean(napi_env_instance, compact, *compact_value));
+                napi_try(napi_set_named_property(napi_env_instance, options, "compact", compact_value));
+                napi_try(napi_get_boolean(napi_env_instance, sorted, *sorted_value));
+                napi_try(napi_set_named_property(napi_env_instance, options, "sorted", sorted_value));
+
+                args: [2]napi_value;
+                args[0] = value;
+                args[1] = options;
+
                 inspected: napi_value;
-                napi_try(napi_call_function(env, napi_global, testa_inspect_fn, 1, *value, *inspected));
+                napi_try(napi_call_function(napi_env_instance, napi_global, testa_inspect_fn, args.count, args.data, *inspected));
                 return string_from_napi_value(inspected);
             }
 
-            throw_error :: (env: napi_env, message: string, args: ..Any) #expand {
+            throw_error :: (message: string, args: ..Any) #expand {
                 text := sprint(message, ..args);
                 text_value, error: napi_value;
-                napi_try(napi_create_string_utf8(env, text.data, xx text.count, *text_value));
-                napi_try(napi_create_error(env, null, text_value, *error));
-                napi_try(napi_throw(env, error));
+                napi_try(napi_create_string_utf8(napi_env_instance, text.data, xx text.count, *text_value));
+                napi_try(napi_create_error(napi_env_instance, null, text_value, *error));
+                napi_try(napi_throw(napi_env_instance, error));
             }
 
             to_be :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
@@ -1579,8 +1590,8 @@ main :: () {
                     expected: napi_value;
                     napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
 
-                    if !object_is(env, actual, expected) {
-                        throw_error(env, "expected % to be %", inspect(env, actual), inspect(env, expected));
+                    if !object_is(actual, expected) {
+                        throw_error("expected % to be %", inspect(actual), inspect(expected));
                     }
                 }
                 return null;
@@ -1595,8 +1606,8 @@ main :: () {
                     expected: napi_value;
                     napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
 
-                    if object_is(env, actual, expected) {
-                        throw_error(env, "expected % not to be %", inspect(env, actual), inspect(env, expected));
+                    if object_is(actual, expected) {
+                        throw_error("expected % not to be %", inspect(actual), inspect(expected));
                     }
                 }
                 return null;
@@ -1613,8 +1624,8 @@ main :: () {
                     expected: napi_value;
                     napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
 
-                    if !deep_equal(env, actual, expected, null) {
-                        throw_error(env, "expected % to equal %", inspect(env, actual), inspect(env, expected));
+                    if !deep_equal(actual, expected, null) {
+                        throw_error("expected % to equal %", inspect(actual), inspect(expected));
                     }
                 }
                 return null;
@@ -1629,8 +1640,8 @@ main :: () {
                     expected: napi_value;
                     napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
 
-                    if deep_equal(env, actual, expected, null) {
-                        throw_error(env, "expected % not to equal %", inspect(env, actual), inspect(env, expected));
+                    if deep_equal(actual, expected, null) {
+                        throw_error("expected % not to equal %", inspect(actual), inspect(expected));
                     }
                 }
                 return null;
@@ -1646,7 +1657,7 @@ main :: () {
                     type: napi_valuetype;
                     napi_try(napi_typeof(env, actual, *type));
                     if type != .napi_null {
-                        throw_error(env, "expected % to be null", inspect(env, actual));
+                        throw_error("expected % to be null", inspect(actual));
                     }
                 }
                 return null;
@@ -1661,7 +1672,7 @@ main :: () {
                     type: napi_valuetype;
                     napi_try(napi_typeof(env, actual, *type));
                     if type == .napi_null {
-                        throw_error(env, "expected % not to be null", inspect(env, actual));
+                        throw_error("expected % not to be null", inspect(actual));
                     }
                 }
                 return null;
@@ -1677,7 +1688,7 @@ main :: () {
                     type: napi_valuetype;
                     napi_try(napi_typeof(env, actual, *type));
                     if type != .napi_undefined {
-                        throw_error(env, "expected % to be undefined", inspect(env, actual));
+                        throw_error("expected % to be undefined", inspect(actual));
                     }
                 }
                 return null;
@@ -1692,7 +1703,7 @@ main :: () {
                     type: napi_valuetype;
                     napi_try(napi_typeof(env, actual, *type));
                     if type == .napi_undefined {
-                        throw_error(env, "expected % not to be undefined", inspect(env, actual));
+                        throw_error("expected % not to be undefined", inspect(actual));
                     }
                 }
                 return null;
@@ -1711,7 +1722,7 @@ main :: () {
                     truthy: bool;
                     napi_try(napi_get_value_bool(env, coerced, *truthy));
                     if !truthy {
-                        throw_error(env, "expected % to be truthy", inspect(env, actual));
+                        throw_error("expected % to be truthy", inspect(actual));
                     }
                 }
                 return null;
@@ -1728,7 +1739,7 @@ main :: () {
                     truthy: bool;
                     napi_try(napi_get_value_bool(env, coerced, *truthy));
                     if truthy {
-                        throw_error(env, "expected % to be falsy", inspect(env, actual));
+                        throw_error("expected % to be falsy", inspect(actual));
                     }
                 }
                 return null;
@@ -1736,27 +1747,27 @@ main :: () {
             register_assertion("toBeTruthy", to_be_truthy, to_be_falsy);
             register_assertion("toBeFalsy", to_be_falsy, to_be_truthy);
 
-            thrown_message :: (env: napi_env, thrown: napi_value) -> napi_value #expand {
+            thrown_message :: (thrown: napi_value) -> napi_value #expand {
                 type: napi_valuetype;
-                napi_try(napi_typeof(env, thrown, *type));
+                napi_try(napi_typeof(napi_env_instance, thrown, *type));
                 message := thrown;
                 if type == .napi_object || type == .napi_function {
-                    napi_try(napi_get_named_property(env, thrown, "message".data, *message));
+                    napi_try(napi_get_named_property(napi_env_instance, thrown, "message".data, *message));
                 }
-                napi_try(napi_typeof(env, message, *type));
+                napi_try(napi_typeof(napi_env_instance, message, *type));
                 if type != .napi_string {
                     return null;
                 }
                 return message;
             }
 
-            regexp_test :: (env: napi_env, regexp: napi_value, message: napi_value) -> bool #expand {
+            regexp_test :: (regexp: napi_value, message: napi_value) -> bool #expand {
                 test_fn: napi_value;
-                napi_try(napi_get_named_property(env, regexp, "test".data, *test_fn));
+                napi_try(napi_get_named_property(napi_env_instance, regexp, "test".data, *test_fn));
                 result: napi_value;
-                napi_try(napi_call_function(env, regexp, test_fn, 1, *message, *result));
+                napi_try(napi_call_function(napi_env_instance, regexp, test_fn, 1, *message, *result));
                 matches: bool;
-                napi_try(napi_get_value_bool(env, result, *matches));
+                napi_try(napi_get_value_bool(napi_env_instance, result, *matches));
                 return matches;
             }
 
@@ -1772,7 +1783,7 @@ main :: () {
                     fn_type: napi_valuetype;
                     napi_try(napi_typeof(env, fn, *fn_type));
                     if fn_type != .napi_function {
-                        throw_error(env, "expected % to be a function", describe_exception(fn));
+                        throw_error("expected % to be a function", describe_exception(fn));
                         return null;
                     }
 
@@ -1780,7 +1791,7 @@ main :: () {
                     status := napi_call_function(env, napi_global, fn, 0, null, *ignored);
                     if status != .pending_exception {
                         napi_try(status);
-                        throw_error(env, "expected function to throw an error, but it didn't");
+                        throw_error("expected function to throw an error, but it didn't");
                         return null;
                     }
                     thrown: napi_value;
@@ -1798,20 +1809,20 @@ main :: () {
                         if !is_instance {
                             name: napi_value;
                             napi_try(napi_get_named_property(env, expected, "name".data, *name));
-                            throw_error(env, "expected % to be an instance of %", describe_exception(thrown), string_from_napi_value(name));
+                            throw_error("expected % to be an instance of %", describe_exception(thrown), string_from_napi_value(name));
                         }
                         return null;
                     }
 
                     expected_kind := v8_value_kind_of(expected);
                     if expected_kind == .ERROR {
-                        if !deep_equal(env, thrown, expected, null) {
-                            throw_error(env, "expected % to equal %", describe_exception(thrown), describe_exception(expected));
+                        if !deep_equal(thrown, expected, null) {
+                            throw_error("expected % to equal %", describe_exception(thrown), describe_exception(expected));
                         }
                         return null;
                     }
 
-                    message := thrown_message(env, thrown);
+                    message := thrown_message(thrown);
                     if expected_type == .napi_string {
                         expected_string := string_from_napi_value(expected);
                         matches := false;
@@ -1820,19 +1831,19 @@ main :: () {
                             matches = ifx expected_string.count == 0 then message_string.count == 0 else contains(message_string, expected_string);
                         }
                         if !matches {
-                            throw_error(env, "expected error message % to include %", inspect(env, message), inspect(env, expected));
+                            throw_error("expected error message % to include %", inspect(message), inspect(expected));
                         }
                         return null;
                     }
 
                     if expected_kind == .REGEXP {
-                        if !message || !regexp_test(env, expected, message) {
-                            throw_error(env, "expected error message % to match %", inspect(env, message), inspect(env, expected));
+                        if !message || !regexp_test(expected, message) {
+                            throw_error("expected error message % to match %", inspect(message), inspect(expected));
                         }
                         return null;
                     }
 
-                    throw_error(env, "toThrow expects a string, RegExp, Error instance or constructor, got %", inspect(env, expected));
+                    throw_error("toThrow expects a string, RegExp, Error instance or constructor, got %", inspect(expected));
                 }
                 return null;
             }
@@ -1849,7 +1860,7 @@ main :: () {
                     fn_type: napi_valuetype;
                     napi_try(napi_typeof(env, fn, *fn_type));
                     if fn_type != .napi_function {
-                        throw_error(env, "expected % to be a function", describe_exception(fn));
+                        throw_error("expected % to be a function", describe_exception(fn));
                         return null;
                     }
 
@@ -1865,7 +1876,7 @@ main :: () {
                     expected_type: napi_valuetype;
                     napi_try(napi_typeof(env, expected, *expected_type));
                     if expected_type == .napi_undefined {
-                        throw_error(env, "expected function not to throw an error, but it threw %", describe_exception(thrown));
+                        throw_error("expected function not to throw an error, but it threw %", describe_exception(thrown));
                         return null;
                     }
 
@@ -1875,20 +1886,20 @@ main :: () {
                         if is_instance {
                             name: napi_value;
                             napi_try(napi_get_named_property(env, expected, "name".data, *name));
-                            throw_error(env, "expected % not to be an instance of %", describe_exception(thrown), string_from_napi_value(name));
+                            throw_error("expected % not to be an instance of %", describe_exception(thrown), string_from_napi_value(name));
                         }
                         return null;
                     }
 
                     expected_kind := v8_value_kind_of(expected);
                     if expected_kind == .ERROR {
-                        if deep_equal(env, thrown, expected, null) {
-                            throw_error(env, "expected % not to equal %", describe_exception(thrown), describe_exception(expected));
+                        if deep_equal(thrown, expected, null) {
+                            throw_error("expected % not to equal %", describe_exception(thrown), describe_exception(expected));
                         }
                         return null;
                     }
 
-                    message := thrown_message(env, thrown);
+                    message := thrown_message(thrown);
                     if expected_type == .napi_string {
                         expected_string := string_from_napi_value(expected);
                         matches := false;
@@ -1897,19 +1908,19 @@ main :: () {
                             matches = ifx expected_string.count == 0 then message_string.count == 0 else contains(message_string, expected_string);
                         }
                         if matches {
-                            throw_error(env, "expected error message % not to include %", inspect(env, message), inspect(env, expected));
+                            throw_error("expected error message % not to include %", inspect(message), inspect(expected));
                         }
                         return null;
                     }
 
                     if expected_kind == .REGEXP {
-                        if message && regexp_test(env, expected, message) {
-                            throw_error(env, "expected error message % not to match %", inspect(env, message), inspect(env, expected));
+                        if message && regexp_test(expected, message) {
+                            throw_error("expected error message % not to match %", inspect(message), inspect(expected));
                         }
                         return null;
                     }
 
-                    throw_error(env, "toThrow expects a string, RegExp, Error instance or constructor, got %", inspect(env, expected));
+                    throw_error("toThrow expects a string, RegExp, Error instance or constructor, got %", inspect(expected));
                 }
                 return null;
             }
@@ -1941,13 +1952,13 @@ main :: () {
                     expected_type: napi_valuetype;
                     napi_try(napi_typeof(env, expected, *expected_type));
                     if expected_type != .napi_string {
-                        throw_error(env, "toBeTypeOf expects a string, got %", inspect(env, expected));
+                        throw_error("toBeTypeOf expects a string, got %", inspect(expected));
                         return null;
                     }
                     actual_type: napi_valuetype;
                     napi_try(napi_typeof(env, actual, *actual_type));
                     if typeof_name(actual_type) != string_from_napi_value(expected) {
-                        throw_error(env, "expected % to be type of %", inspect(env, actual), inspect(env, expected));
+                        throw_error("expected % to be type of %", inspect(actual), inspect(expected));
                     }
                 }
                 return null;
@@ -1965,13 +1976,13 @@ main :: () {
                     expected_type: napi_valuetype;
                     napi_try(napi_typeof(env, expected, *expected_type));
                     if expected_type != .napi_string {
-                        throw_error(env, "toBeTypeOf expects a string, got %", inspect(env, expected));
+                        throw_error("toBeTypeOf expects a string, got %", inspect(expected));
                         return null;
                     }
                     actual_type: napi_valuetype;
                     napi_try(napi_typeof(env, actual, *actual_type));
                     if typeof_name(actual_type) == string_from_napi_value(expected) {
-                        throw_error(env, "expected % not to be type of %", inspect(env, actual), inspect(env, expected));
+                        throw_error("expected % not to be type of %", inspect(actual), inspect(expected));
                     }
                 }
                 return null;
@@ -1990,7 +2001,7 @@ main :: () {
                     expected_type: napi_valuetype;
                     napi_try(napi_typeof(env, expected, *expected_type));
                     if expected_type != .napi_function {
-                        throw_error(env, "toBeInstanceOf expects a constructor, got %", inspect(env, expected));
+                        throw_error("toBeInstanceOf expects a constructor, got %", inspect(expected));
                         return null;
                     }
                     is_instance: bool;
@@ -1998,7 +2009,7 @@ main :: () {
                     if !is_instance {
                         name: napi_value;
                         napi_try(napi_get_named_property(env, expected, "name".data, *name));
-                        throw_error(env, "expected % to be an instance of %", inspect(env, actual), string_from_napi_value(name));
+                        throw_error("expected % to be an instance of %", inspect(actual), string_from_napi_value(name));
                     }
                 }
                 return null;
@@ -2016,7 +2027,7 @@ main :: () {
                     expected_type: napi_valuetype;
                     napi_try(napi_typeof(env, expected, *expected_type));
                     if expected_type != .napi_function {
-                        throw_error(env, "toBeInstanceOf expects a constructor, got %", inspect(env, expected));
+                        throw_error("toBeInstanceOf expects a constructor, got %", inspect(expected));
                         return null;
                     }
                     is_instance: bool;
@@ -2024,7 +2035,7 @@ main :: () {
                     if is_instance {
                         name: napi_value;
                         napi_try(napi_get_named_property(env, expected, "name".data, *name));
-                        throw_error(env, "expected % not to be an instance of %", inspect(env, actual), string_from_napi_value(name));
+                        throw_error("expected % not to be an instance of %", inspect(actual), string_from_napi_value(name));
                     }
                 }
                 return null;
@@ -2033,19 +2044,19 @@ main :: () {
 
             Ordering :: enum { LESS; EQUAL; GREATER; UNORDERED; }
 
-            bigint_words :: (env: napi_env, value: napi_value) -> bool, []u64 #expand {
+            bigint_words :: (value: napi_value) -> bool, []u64 #expand {
                 sign_bit: s32;
                 count: u64;
-                napi_try(napi_get_value_bigint_words(env, value, null, *count, null));
+                napi_try(napi_get_value_bigint_words(napi_env_instance, value, null, *count, null));
                 words := NewArray(xx count, u64,, temp);
                 if count > 0 {
-                    napi_try(napi_get_value_bigint_words(env, value, *sign_bit, *count, words.data));
+                    napi_try(napi_get_value_bigint_words(napi_env_instance, value, *sign_bit, *count, words.data));
                 }
                 return sign_bit != 0, words;
             }
 
-            bigint_to_float64 :: (env: napi_env, value: napi_value) -> float64 #expand {
-                negative, words := bigint_words(env, value);
+            bigint_to_float64 :: (value: napi_value) -> float64 #expand {
+                negative, words := bigint_words(value);
                 result: float64 = 0;
                 for < words {
                     result = result * 18446744073709551616.0 + cast(float64) it;
@@ -2053,22 +2064,22 @@ main :: () {
                 return ifx negative then -result else result;
             }
 
-            numeric_compare :: (env: napi_env, name: string, a: napi_value, b: napi_value) -> Ordering #expand {
+            numeric_compare :: (name: string, a: napi_value, b: napi_value) -> Ordering #expand {
                 a_type, b_type: napi_valuetype;
-                napi_try(napi_typeof(env, a, *a_type));
-                napi_try(napi_typeof(env, b, *b_type));
+                napi_try(napi_typeof(napi_env_instance, a, *a_type));
+                napi_try(napi_typeof(napi_env_instance, b, *b_type));
                 if a_type != .napi_number && a_type != .napi_bigint {
-                    throw_error(env, "expected % to be a number or bigint", inspect(env, a));
+                    throw_error("expected % to be a number or bigint", inspect(a));
                     `return null;
                 }
                 if b_type != .napi_number && b_type != .napi_bigint {
-                    throw_error(env, "% expects a number or bigint, got %", name, inspect(env, b));
+                    throw_error("% expects a number or bigint, got %", name, inspect(b));
                     `return null;
                 }
 
                 if a_type == .napi_bigint && b_type == .napi_bigint {
-                    a_negative, a_words := bigint_words(env, a);
-                    b_negative, b_words := bigint_words(env, b);
+                    a_negative, a_words := bigint_words(a);
+                    b_negative, b_words := bigint_words(b);
                     if a_negative != b_negative {
                         return ifx a_negative then Ordering.LESS else Ordering.GREATER;
                     }
@@ -2097,14 +2108,14 @@ main :: () {
 
                 x, y: float64;
                 if a_type == .napi_number {
-                    napi_try(napi_get_value_double(env, a, *x));
+                    napi_try(napi_get_value_double(napi_env_instance, a, *x));
                 } else {
-                    x = bigint_to_float64(env, a);
+                    x = bigint_to_float64(a);
                 }
                 if b_type == .napi_number {
-                    napi_try(napi_get_value_double(env, b, *y));
+                    napi_try(napi_get_value_double(napi_env_instance, b, *y));
                 } else {
-                    y = bigint_to_float64(env, b);
+                    y = bigint_to_float64(b);
                 }
                 if isnan(x) || isnan(y) {
                     return .UNORDERED;
@@ -2127,8 +2138,8 @@ main :: () {
                     expected: napi_value;
                     napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
 
-                    if numeric_compare(env, "toBeGreaterThan", actual, expected) != .GREATER {
-                        throw_error(env, "expected % to be greater than %", inspect(env, actual), inspect(env, expected));
+                    if numeric_compare("toBeGreaterThan", actual, expected) != .GREATER {
+                        throw_error("expected % to be greater than %", inspect(actual), inspect(expected));
                     }
                 }
                 return null;
@@ -2143,8 +2154,8 @@ main :: () {
                     expected: napi_value;
                     napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
 
-                    if numeric_compare(env, "toBeGreaterThan", actual, expected) == .GREATER {
-                        throw_error(env, "expected % not to be greater than %", inspect(env, actual), inspect(env, expected));
+                    if numeric_compare("toBeGreaterThan", actual, expected) == .GREATER {
+                        throw_error("expected % not to be greater than %", inspect(actual), inspect(expected));
                     }
                 }
                 return null;
@@ -2160,9 +2171,9 @@ main :: () {
                     expected: napi_value;
                     napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
 
-                    order := numeric_compare(env, "toBeGreaterThanOrEqual", actual, expected);
+                    order := numeric_compare("toBeGreaterThanOrEqual", actual, expected);
                     if order != .GREATER && order != .EQUAL {
-                        throw_error(env, "expected % to be greater than or equal to %", inspect(env, actual), inspect(env, expected));
+                        throw_error("expected % to be greater than or equal to %", inspect(actual), inspect(expected));
                     }
                 }
                 return null;
@@ -2177,9 +2188,9 @@ main :: () {
                     expected: napi_value;
                     napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
 
-                    order := numeric_compare(env, "toBeGreaterThanOrEqual", actual, expected);
+                    order := numeric_compare("toBeGreaterThanOrEqual", actual, expected);
                     if order == .GREATER || order == .EQUAL {
-                        throw_error(env, "expected % not to be greater than or equal to %", inspect(env, actual), inspect(env, expected));
+                        throw_error("expected % not to be greater than or equal to %", inspect(actual), inspect(expected));
                     }
                 }
                 return null;
@@ -2195,8 +2206,8 @@ main :: () {
                     expected: napi_value;
                     napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
 
-                    if numeric_compare(env, "toBeLessThan", actual, expected) != .LESS {
-                        throw_error(env, "expected % to be less than %", inspect(env, actual), inspect(env, expected));
+                    if numeric_compare("toBeLessThan", actual, expected) != .LESS {
+                        throw_error("expected % to be less than %", inspect(actual), inspect(expected));
                     }
                 }
                 return null;
@@ -2211,8 +2222,8 @@ main :: () {
                     expected: napi_value;
                     napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
 
-                    if numeric_compare(env, "toBeLessThan", actual, expected) == .LESS {
-                        throw_error(env, "expected % not to be less than %", inspect(env, actual), inspect(env, expected));
+                    if numeric_compare("toBeLessThan", actual, expected) == .LESS {
+                        throw_error("expected % not to be less than %", inspect(actual), inspect(expected));
                     }
                 }
                 return null;
@@ -2228,9 +2239,9 @@ main :: () {
                     expected: napi_value;
                     napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
 
-                    order := numeric_compare(env, "toBeLessThanOrEqual", actual, expected);
+                    order := numeric_compare("toBeLessThanOrEqual", actual, expected);
                     if order != .LESS && order != .EQUAL {
-                        throw_error(env, "expected % to be less than or equal to %", inspect(env, actual), inspect(env, expected));
+                        throw_error("expected % to be less than or equal to %", inspect(actual), inspect(expected));
                     }
                 }
                 return null;
@@ -2245,26 +2256,26 @@ main :: () {
                     expected: napi_value;
                     napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
 
-                    order := numeric_compare(env, "toBeLessThanOrEqual", actual, expected);
+                    order := numeric_compare("toBeLessThanOrEqual", actual, expected);
                     if order == .LESS || order == .EQUAL {
-                        throw_error(env, "expected % not to be less than or equal to %", inspect(env, actual), inspect(env, expected));
+                        throw_error("expected % not to be less than or equal to %", inspect(actual), inspect(expected));
                     }
                 }
                 return null;
             }
             register_assertion("toBeLessThanOrEqual", to_be_less_than_or_equal, not_to_be_less_than_or_equal);
 
-            array_includes :: (env: napi_env, array: napi_value, item: napi_value) -> bool #expand {
+            array_includes :: (array: napi_value, item: napi_value) -> bool #expand {
                 length: u32;
-                napi_try(napi_get_array_length(env, array, *length));
+                napi_try(napi_get_array_length(napi_env_instance, array, *length));
                 scope: napi_handle_scope;
-                napi_try(napi_open_handle_scope(env, *scope));
-                defer napi_check(napi_close_handle_scope(env, scope));
+                napi_try(napi_open_handle_scope(napi_env_instance, *scope));
+                defer napi_check(napi_close_handle_scope(napi_env_instance, scope));
                 for 0..cast(s64) length - 1 {
                     element: napi_value;
-                    napi_try(napi_get_element(env, array, xx it, *element));
+                    napi_try(napi_get_element(napi_env_instance, array, xx it, *element));
                     same: bool;
-                    napi_try(napi_strict_equals(env, element, item, *same));
+                    napi_try(napi_strict_equals(napi_env_instance, element, item, *same));
                     if same {
                         return true;
                     }
@@ -2287,7 +2298,7 @@ main :: () {
 
                     if actual_type == .napi_string {
                         if expected_type != .napi_string {
-                            throw_error(env, "expected % to be a string since % is a string", inspect(env, expected), inspect(env, actual));
+                            throw_error("expected % to be a string since % is a string", inspect(expected), inspect(actual));
                             return null;
                         }
                         result: napi_value;
@@ -2295,21 +2306,21 @@ main :: () {
                         found: bool;
                         napi_try(napi_get_value_bool(env, result, *found));
                         if !found {
-                            throw_error(env, "expected % to contain %", inspect(env, actual), inspect(env, expected));
+                            throw_error("expected % to contain %", inspect(actual), inspect(expected));
                         }
                         return null;
                     }
 
                     if actual_type != .napi_object {
-                        throw_error(env, "expected % to be a string or an iterable", inspect(env, actual));
+                        throw_error("expected % to be a string or an iterable", inspect(actual));
                         return null;
                     }
                     array := actual;
                     if v8_value_kind_of(actual) != .ARRAY {
                         napi_try(napi_call_function(env, array_constructor, array_from_fn, 1, *actual, *array));
                     }
-                    if !array_includes(env, array, expected) {
-                        throw_error(env, "expected % to contain %", inspect(env, actual), inspect(env, expected));
+                    if !array_includes(array, expected) {
+                        throw_error("expected % to contain %", inspect(actual), inspect(expected));
                     }
                 }
                 return null;
@@ -2330,7 +2341,7 @@ main :: () {
 
                     if actual_type == .napi_string {
                         if expected_type != .napi_string {
-                            throw_error(env, "expected % to be a string since % is a string", inspect(env, expected), inspect(env, actual));
+                            throw_error("expected % to be a string since % is a string", inspect(expected), inspect(actual));
                             return null;
                         }
                         result: napi_value;
@@ -2338,37 +2349,37 @@ main :: () {
                         found: bool;
                         napi_try(napi_get_value_bool(env, result, *found));
                         if found {
-                            throw_error(env, "expected % not to contain %", inspect(env, actual), inspect(env, expected));
+                            throw_error("expected % not to contain %", inspect(actual), inspect(expected));
                         }
                         return null;
                     }
 
                     if actual_type != .napi_object {
-                        throw_error(env, "expected % to be a string or an iterable", inspect(env, actual));
+                        throw_error("expected % to be a string or an iterable", inspect(actual));
                         return null;
                     }
                     array := actual;
                     if v8_value_kind_of(actual) != .ARRAY {
                         napi_try(napi_call_function(env, array_constructor, array_from_fn, 1, *actual, *array));
                     }
-                    if array_includes(env, array, expected) {
-                        throw_error(env, "expected % not to contain %", inspect(env, actual), inspect(env, expected));
+                    if array_includes(array, expected) {
+                        throw_error("expected % not to contain %", inspect(actual), inspect(expected));
                     }
                 }
                 return null;
             }
             register_assertion("toContain", to_contain, not_to_contain);
 
-            array_contains_equal :: (env: napi_env, array: napi_value, item: napi_value) -> bool #expand {
+            array_contains_equal :: (array: napi_value, item: napi_value) -> bool #expand {
                 length: u32;
-                napi_try(napi_get_array_length(env, array, *length));
+                napi_try(napi_get_array_length(napi_env_instance, array, *length));
                 scope: napi_handle_scope;
-                napi_try(napi_open_handle_scope(env, *scope));
-                defer napi_check(napi_close_handle_scope(env, scope));
+                napi_try(napi_open_handle_scope(napi_env_instance, *scope));
+                defer napi_check(napi_close_handle_scope(napi_env_instance, scope));
                 for 0..cast(s64) length - 1 {
                     element: napi_value;
-                    napi_try(napi_get_element(env, array, xx it, *element));
-                    if deep_equal(env, element, item, null) {
+                    napi_try(napi_get_element(napi_env_instance, array, xx it, *element));
+                    if deep_equal(element, item, null) {
                         return true;
                     }
                 }
@@ -2387,15 +2398,15 @@ main :: () {
                     actual_type: napi_valuetype;
                     napi_try(napi_typeof(env, actual, *actual_type));
                     if actual_type != .napi_object && actual_type != .napi_string {
-                        throw_error(env, "expected % to be a string or an iterable", inspect(env, actual));
+                        throw_error("expected % to be a string or an iterable", inspect(actual));
                         return null;
                     }
                     array := actual;
                     if v8_value_kind_of(actual) != .ARRAY {
                         napi_try(napi_call_function(env, array_constructor, array_from_fn, 1, *actual, *array));
                     }
-                    if !array_contains_equal(env, array, expected) {
-                        throw_error(env, "expected % to contain an element equal to %", inspect(env, actual), inspect(env, expected));
+                    if !array_contains_equal(array, expected) {
+                        throw_error("expected % to contain an element equal to %", inspect(actual), inspect(expected));
                     }
                 }
                 return null;
@@ -2413,43 +2424,43 @@ main :: () {
                     actual_type: napi_valuetype;
                     napi_try(napi_typeof(env, actual, *actual_type));
                     if actual_type != .napi_object && actual_type != .napi_string {
-                        throw_error(env, "expected % to be a string or an iterable", inspect(env, actual));
+                        throw_error("expected % to be a string or an iterable", inspect(actual));
                         return null;
                     }
                     array := actual;
                     if v8_value_kind_of(actual) != .ARRAY {
                         napi_try(napi_call_function(env, array_constructor, array_from_fn, 1, *actual, *array));
                     }
-                    if array_contains_equal(env, array, expected) {
-                        throw_error(env, "expected % not to contain an element equal to %", inspect(env, actual), inspect(env, expected));
+                    if array_contains_equal(array, expected) {
+                        throw_error("expected % not to contain an element equal to %", inspect(actual), inspect(expected));
                     }
                 }
                 return null;
             }
             register_assertion("toContainEqual", to_contain_equal, not_to_contain_equal);
 
-            length_of :: (env: napi_env, value: napi_value) -> napi_value, descriptor: string #expand {
+            length_of :: (value: napi_value) -> napi_value, descriptor: string #expand {
                 kind := v8_value_kind_of(value);
                 if kind == .MAP || kind == .SET {
                     size: napi_value;
-                    napi_try(napi_get_named_property(env, value, "size".data, *size));
+                    napi_try(napi_get_named_property(napi_env_instance, value, "size".data, *size));
                     return size, "size";
                 }
                 type: napi_valuetype;
-                napi_try(napi_typeof(env, value, *type));
+                napi_try(napi_typeof(napi_env_instance, value, *type));
                 if type == .napi_object || type == .napi_function {
                     has_length: bool;
-                    napi_try(napi_has_named_property(env, value, "length".data, *has_length));
+                    napi_try(napi_has_named_property(napi_env_instance, value, "length".data, *has_length));
                     if !has_length {
-                        throw_error(env, "expected % to have a length property", inspect(env, value));
+                        throw_error("expected % to have a length property", inspect(value));
                         `return null;
                     }
                 } else if type != .napi_string {
-                    throw_error(env, "expected % to have a length property", inspect(env, value));
+                    throw_error("expected % to have a length property", inspect(value));
                     `return null;
                 }
                 length: napi_value;
-                napi_try(napi_get_named_property(env, value, "length".data, *length));
+                napi_try(napi_get_named_property(napi_env_instance, value, "length".data, *length));
                 return length, "length";
             }
 
@@ -2465,14 +2476,14 @@ main :: () {
                     expected_type: napi_valuetype;
                     napi_try(napi_typeof(env, expected, *expected_type));
                     if expected_type != .napi_number {
-                        throw_error(env, "toHaveLength expects a number, got %", inspect(env, expected));
+                        throw_error("toHaveLength expects a number, got %", inspect(expected));
                         return null;
                     }
-                    length, descriptor := length_of(env, actual);
+                    length, descriptor := length_of(actual);
                     same: bool;
                     napi_try(napi_strict_equals(env, length, expected, *same));
                     if !same {
-                        throw_error(env, "expected % to have a % of % but got %", inspect(env, actual), descriptor, inspect(env, expected), inspect(env, length));
+                        throw_error("expected % to have a % of % but got %", inspect(actual), descriptor, inspect(expected), inspect(length));
                     }
                 }
                 return null;
@@ -2490,14 +2501,14 @@ main :: () {
                     expected_type: napi_valuetype;
                     napi_try(napi_typeof(env, expected, *expected_type));
                     if expected_type != .napi_number {
-                        throw_error(env, "toHaveLength expects a number, got %", inspect(env, expected));
+                        throw_error("toHaveLength expects a number, got %", inspect(expected));
                         return null;
                     }
-                    length, descriptor := length_of(env, actual);
+                    length, descriptor := length_of(actual);
                     same: bool;
                     napi_try(napi_strict_equals(env, length, expected, *same));
                     if same {
-                        throw_error(env, "expected % not to have a % of %", inspect(env, actual), descriptor, inspect(env, expected));
+                        throw_error("expected % not to have a % of %", inspect(actual), descriptor, inspect(expected));
                     }
                 }
                 return null;
