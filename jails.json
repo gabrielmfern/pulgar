@@ -1,0 +1,8 @@
+{
+    "roots": [
+        "pulgar.jai",
+        "build.jai"
+    ],
+    "build_root": "build.jai",
+    "intermediate_path": ".build/jails"
+}

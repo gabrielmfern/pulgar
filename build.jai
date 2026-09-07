@@ -14,6 +14,7 @@
 
 build :: () {
     debug := get_build_options().array_bounds_check == .ON;
+    jails :: #exists(JAILS_DIAGNOSTICS_BUILD);
 
     set_build_options_dc(.{do_output=false});
 
@@ -70,7 +71,7 @@ build :: () {
         array_add(*extra, "-std=c++20");
         array_add(*extra, tprint("%/libnode.%", libnode_dir, ifx OS == .MACOS then "137.dylib" else "so.137"));
         #if OS == .LINUX {
-            array_add(*extra, "-Wl,-soname,shim.so");
+            array_add(*extra, "-Wl,-soname,shim.so", tprint("-Wl,-rpath,$ORIGIN/%", libnode_dir));
         }
         #if OS == .MACOS {
             array_add(*extra, "-mmacosx-version-min=13.5");
@@ -78,7 +79,7 @@ build :: () {
         }
     }
 
-    if !build_cpp_dynamic_lib("shim", "shim.cpp", debug=debug, extra=extra) {
+    if !jails && !build_cpp_dynamic_lib("shim", "shim.cpp", debug=debug, extra=extra) {
         compiler_set_workspace_status(.FAILED);
         return;
     }
@@ -109,7 +110,7 @@ build :: () {
         array_add(*system_include_paths, ..get_default_system_include_paths());
     }
 
-    if !generate_bindings(opts, output_filename) {
+    if !jails && !generate_bindings(opts, output_filename) {
         compiler_set_workspace_status(.FAILED);
         return;
     }
@@ -118,14 +119,18 @@ build :: () {
     if !debug {
         set_optimization(*options, .OPTIMIZED);
     }
-    options.output_type = .EXECUTABLE;
-    options.output_executable_name = "pulgar";
-    options.output_path = dist_dir;
-    make_directory_if_it_does_not_exist(dist_dir, recursive=true);
-    for runtime_libs {
-        if !copy_file(tprint("%/%", it[0], it[1]), tprint("%/%", dist_dir, it[1])) {
-            compiler_set_workspace_status(.FAILED);
-            return;
+    if jails {
+        options.output_type = .NO_OUTPUT;
+    } else {
+        options.output_type = .EXECUTABLE;
+        options.output_executable_name = "pulgar";
+        options.output_path = dist_dir;
+        make_directory_if_it_does_not_exist(dist_dir, recursive=true);
+        for runtime_libs {
+            if !copy_file(tprint("%/%", it[0], it[1]), tprint("%/%", dist_dir, it[1])) {
+                compiler_set_workspace_status(.FAILED);
+                return;
+            }
         }
     }
     set_build_options(options, w);
