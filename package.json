@@ -10,12 +10,8 @@
     "pulgar": "bin/pulgar.mjs"
   },
   "types": "pulgar.d.ts",
-  "scripts": {
-    "postinstall": "node install.mjs"
-  },
   "files": [
     "bin/pulgar.mjs",
-    "install.mjs",
     "pulgar.d.ts"
   ],
   "optionalDependencies": {

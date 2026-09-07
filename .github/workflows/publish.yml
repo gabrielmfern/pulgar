@@ -109,11 +109,11 @@ jobs:
           key: ${{ steps.node-cache.outputs.cache-primary-key }}
 
       # Builds optimized and writes dist/<platform>/package.json for the
-      # @pulgar/<platform> package - see publish.jai. Every run builds and
-      # builds this exact artifact; only a v* tag push or a manual run goes on to publish it.
+      # @pulgar/<platform> package - see build.jai. Every run builds this exact
+      # artifact; only a v* tag push or a manual run goes on to publish it.
       - name: build + package
         shell: bash
-        run: ${{ matrix.jai }} publish.jai
+        run: ${{ matrix.jai }} build.jai -optimized - publish
 
       - uses: actions/upload-artifact@v4
         with:

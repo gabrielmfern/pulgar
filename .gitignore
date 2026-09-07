@@ -7,18 +7,12 @@ node_modules/
 # debugging
 *.rdi
 
-# build outputs: executable + runtime libraries
+# generated: the executable + libnode next to it (bindings and shim.a land in .build/)
 dist/
 !vendor/node
 vendor/xwin/
 .xwin-cache/
 vendor/macos-sdk/
-shim.dylib*
-shim.dll
-shim.lib
-shim.obj
-shim.pdb
-shim.so
 
 # stuff
 .ai
