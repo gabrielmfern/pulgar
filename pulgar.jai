@@ -365,6 +365,18 @@ stringify :: (value: napi_value) -> string {
             return string_from_napi_value(v8_date_iso_string(value));
         case v8_value_kind.ERROR;
             return sprint("[%]", describe_exception(value));
+        case v8_value_kind.REGEXP;
+            builder: String_Builder;
+            print_to_builder(*builder, "/%/", string_from_napi_value(v8_regexp_source(value)));
+            flags := v8_regexp_flags(value);
+            letters :: "dgimsuvy";
+            bits :: v8_regexp_flag.[.HAS_INDICES, .GLOBAL, .IGNORE_CASE, .MULTILINE, .DOT_ALL, .UNICODE, .UNICODE_SETS, .STICKY];
+            for bits {
+                if flags & it {
+                    append(*builder, letters[it_index]);
+                }
+            }
+            return builder_to_string(*builder);
         case;
             return "";
     }

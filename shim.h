@@ -87,7 +87,18 @@ SHIM_EXPORT napi_value v8_function_name(napi_value value);
 SHIM_EXPORT napi_value v8_constructor_name(napi_value value);
 SHIM_EXPORT napi_value v8_symbol_description(napi_value value);
 SHIM_EXPORT napi_value v8_regexp_source(napi_value value);
-SHIM_EXPORT int v8_regexp_flags(napi_value value);
+typedef enum v8_regexp_flag {
+    V8_REGEXP_GLOBAL       = 1 << 0,
+    V8_REGEXP_IGNORE_CASE  = 1 << 1,
+    V8_REGEXP_MULTILINE    = 1 << 2,
+    V8_REGEXP_STICKY       = 1 << 3,
+    V8_REGEXP_UNICODE      = 1 << 4,
+    V8_REGEXP_DOT_ALL      = 1 << 5,
+    V8_REGEXP_LINEAR       = 1 << 6,
+    V8_REGEXP_HAS_INDICES  = 1 << 7,
+    V8_REGEXP_UNICODE_SETS = 1 << 8,
+} v8_regexp_flag;
+SHIM_EXPORT v8_regexp_flag v8_regexp_flags(napi_value value);
 SHIM_EXPORT size_t v8_map_size(napi_value value);
 SHIM_EXPORT size_t v8_set_size(napi_value value);
 SHIM_EXPORT napi_value v8_map_as_array(napi_value value);

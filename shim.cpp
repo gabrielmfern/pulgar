@@ -248,8 +248,8 @@ napi_value v8_regexp_source(napi_value value) {
     return to_napi(to_local(value).As<v8::RegExp>()->GetSource());
 }
 
-int v8_regexp_flags(napi_value value) {
-    return (int)to_local(value).As<v8::RegExp>()->GetFlags();
+v8_regexp_flag v8_regexp_flags(napi_value value) {
+    return (v8_regexp_flag)to_local(value).As<v8::RegExp>()->GetFlags();
 }
 
 size_t v8_map_size(napi_value value) {
