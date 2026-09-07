@@ -4,6 +4,7 @@
     #import "Basic";
 }
 #import "String";
+#import "Sort";
 #import "Math";
 #import "File";
 #import "Pool";
@@ -35,7 +36,6 @@ temporal_equals_prototypes: [7]napi_value;
 temporal_duration_prototype: napi_value;
 noop_fn: napi_value;
 testa_run_fn: napi_value;
-testa_inspect_fn: napi_value;
 string_includes_fn: napi_value;
 array_constructor: napi_value;
 array_from_fn: napi_value;
@@ -314,72 +314,317 @@ string_from_napi_value :: (value: napi_value) -> string {
     return str;
 }
 
-stringify :: (value: napi_value) -> string {
-    if v8_value_kind_of(value) == {
-        case v8_value_kind.BOOLEAN_OBJECT;
-            return ifx v8_boolean_object_value(value) != 0 "true" else "false";
-        case v8_value_kind.BOOLEAN;
+stringify :: (value: napi_value, min := false) -> string {
+    builder: String_Builder;
+    stringify(*builder, value, 0, 0, null, false, min);
+    return builder_to_string(*builder);
+}
+
+Stringify_Frame :: struct {
+    value: napi_value;
+    parent: *Stringify_Frame;
+}
+
+Stringify_Key :: struct {
+    name: string;
+    key: napi_value;
+}
+
+STRINGIFY_MAX_DEPTH :: 20;
+
+stringify :: (builder: *String_Builder, value: napi_value, indent: int, depth: int, parent: *Stringify_Frame, called_to_json: bool, min: bool) {
+    indent_to :: (builder: *String_Builder, level: int) {
+        for 1..level {
+            append(builder, "  ");
+        }
+    }
+
+    item_separator :: (builder: *String_Builder, min: bool, last: bool) {
+        if min {
+            if !last {
+                append(builder, ", ");
+            }
+        } else {
+            append(builder, ",\n");
+        }
+    }
+
+    kind := v8_value_kind_of(value);
+    if kind == {
+        case .BOOLEAN_OBJECT;
+            append(builder, ifx v8_boolean_object_value(value) != 0 "true" else "false");
+            return;
+        case .BOOLEAN;
             b: bool;
             napi_check(napi_get_value_bool(napi_env_instance, value, *b));
-            return ifx b "true" else "false";
-        case v8_value_kind.UNDEFINED;
-            return "undefined";
-        case v8_value_kind.NULL;
-            return "null";
-        case v8_value_kind.NUMBER_OBJECT;
-            x := v8_number_object_value(value);
-            return sprint("%", FormatFloat.{value=x, trailing_width=17, mode=.SHORTEST});
-        case v8_value_kind.NUMBER;
+            append(builder, ifx b "true" else "false");
+            return;
+        case .UNDEFINED;
+            append(builder, "undefined");
+            return;
+        case .NULL;
+            append(builder, "null");
+            return;
+        case .NUMBER_OBJECT; #through;
+        case .NUMBER;
             x: float64;
-            napi_check(napi_get_value_double(napi_env_instance, value, *x));
-            return sprint("%", FormatFloat.{value=x, trailing_width=17, mode=.SHORTEST});
-        case v8_value_kind.BIGINT_OBJECT; #through;
-        case v8_value_kind.BIGINT;
+            if kind == .NUMBER_OBJECT {
+                x = v8_number_object_value(value);
+            } else {
+                napi_check(napi_get_value_double(napi_env_instance, value, *x));
+            }
+            if !isnan(x) && x == 0 && 1 / x < 0 {
+                append(builder, "-0");
+                return;
+            }
+            number, text: napi_value;
+            napi_check(napi_create_double(napi_env_instance, x, *number));
+            napi_check(napi_coerce_to_string(napi_env_instance, number, *text));
+            append(builder, string_from_napi_value(text));
+            return;
+        case .BIGINT_OBJECT; #through;
+        case .BIGINT;
             stringified_bigint: napi_value;
             napi_check(napi_coerce_to_string(napi_env_instance, value, *stringified_bigint));
-            return sprint("%n", string_from_napi_value(stringified_bigint));
-        case v8_value_kind.STRING_OBJECT;
-            return stringify(v8_string_object_value(value));
-        case v8_value_kind.STRING;
-            return string_from_napi_value(value);
-        case v8_value_kind.FUNCTION;
-            return string_from_napi_value(v8_function_name(value));
-        case v8_value_kind.SYMBOL_OBJECT;
-            return stringify(v8_symbol_object_value(value));
-        case v8_value_kind.SYMBOL;
+            print_to_builder(builder, "%n", string_from_napi_value(stringified_bigint));
+            return;
+        case .STRING_OBJECT;
+            stringify(builder, v8_string_object_value(value), indent, depth, parent, called_to_json, min);
+            return;
+        case .STRING;
+            print_to_builder(builder, "\"%\"", string_from_napi_value(value));
+            return;
+        case .FUNCTION;
+            name := string_from_napi_value(v8_function_name(value));
+            print_to_builder(builder, "[Function %]", ifx name.count > 0 then name else "anonymous");
+            return;
+        case .SYMBOL_OBJECT;
+            stringify(builder, v8_symbol_object_value(value), indent, depth, parent, called_to_json, min);
+            return;
+        case .SYMBOL;
             description := v8_symbol_description(value);
             if v8_value_kind_of(description) == .UNDEFINED {
-                return "Symbol()";
+                append(builder, "Symbol()");
+            } else {
+                print_to_builder(builder, "Symbol(%)", string_from_napi_value(description));
             }
-            return sprint("Symbol(%)", string_from_napi_value(description));
-        case v8_value_kind.WEAK_MAP;
-            return "WeakMap {}";
-        case v8_value_kind.WEAK_SET;
-            return "WeakSet {}";
-        case v8_value_kind.DATE;
+            return;
+        case .WEAK_MAP;
+            append(builder, "WeakMap {}");
+            return;
+        case .WEAK_SET;
+            append(builder, "WeakSet {}");
+            return;
+        case .DATE;
             t: float64;
             napi_check(napi_get_date_value(napi_env_instance, value, *t));
             if isnan(t) {
-                return "Date { NaN }";
+                append(builder, "Date { NaN }");
+            } else {
+                append(builder, string_from_napi_value(v8_date_iso_string(value)));
             }
-            return string_from_napi_value(v8_date_iso_string(value));
-        case v8_value_kind.ERROR;
-            return sprint("[%]", describe_exception(value));
-        case v8_value_kind.REGEXP;
-            builder: String_Builder;
-            print_to_builder(*builder, "/%/", string_from_napi_value(v8_regexp_source(value)));
+            return;
+        case .ERROR;
+            print_to_builder(builder, "[%]", describe_exception(value));
+            return;
+        case .REGEXP;
+            print_to_builder(builder, "/%/", string_from_napi_value(v8_regexp_source(value)));
             flags := v8_regexp_flags(value);
             letters :: "dgimsuvy";
             bits :: v8_regexp_flag.[.HAS_INDICES, .GLOBAL, .IGNORE_CASE, .MULTILINE, .DOT_ALL, .UNICODE, .UNICODE_SETS, .STICKY];
             for bits {
                 if flags & it {
-                    append(*builder, letters[it_index]);
+                    append(builder, letters[it_index]);
                 }
             }
-            return builder_to_string(*builder);
-        case;
-            return "";
+            return;
     }
+
+    ancestor := parent;
+    while ancestor {
+        if v8_same_object(ancestor.value, value) {
+            append(builder, "[Circular]");
+            return;
+        }
+        ancestor = ancestor.parent;
+    }
+    frame := Stringify_Frame.{value, parent};
+    depth += 1;
+    hit_max_depth := depth > STRINGIFY_MAX_DEPTH;
+    item_indent := ifx min 0 else indent + 1;
+
+    scope: napi_handle_scope;
+    napi_check(napi_open_handle_scope(napi_env_instance, *scope));
+    defer napi_check(napi_close_handle_scope(napi_env_instance, scope));
+
+    if !hit_max_depth && !called_to_json {
+        has_to_json: bool;
+        napi_check(napi_has_named_property(napi_env_instance, value, "toJSON", *has_to_json));
+        if has_to_json {
+            to_json: napi_value;
+            napi_check(napi_get_named_property(napi_env_instance, value, "toJSON", *to_json));
+            if v8_value_kind_of(to_json) == .FUNCTION {
+                result: napi_value;
+                napi_check(napi_call_function(napi_env_instance, value, to_json, 0, null, *result));
+                stringify(builder, result, indent, depth, *frame, true, min);
+                return;
+            }
+        }
+    }
+
+    if kind == .ARRAY || kind == .TYPED_ARRAY || kind == .ARGUMENTS || kind == .ARRAY_BUFFER || kind == .DATA_VIEW {
+        name := ifx kind == .ARGUMENTS then "Arguments" else string_from_napi_value(v8_constructor_name(value));
+        if hit_max_depth {
+            print_to_builder(builder, "[%]", name);
+            return;
+        }
+        if !min && name != "Array" {
+            print_to_builder(builder, "% ", name);
+        }
+        append(builder, "[");
+        if kind == .ARRAY_BUFFER || kind == .DATA_VIEW {
+            data: *s8;
+            byte_length: u64;
+            if kind == .ARRAY_BUFFER {
+                napi_check(napi_get_arraybuffer_info(napi_env_instance, value, xx *data, *byte_length));
+            } else {
+                napi_check(napi_get_dataview_info(napi_env_instance, value, *byte_length, xx *data, null, null));
+            }
+            if byte_length > 0 {
+                if !min {
+                    append(builder, "\n");
+                }
+                for 0..cast(s64) byte_length - 1 {
+                    indent_to(builder, item_indent);
+                    print_to_builder(builder, "%", data[it]);
+                    item_separator(builder, min, it == cast(s64) byte_length - 1);
+                }
+                if !min {
+                    indent_to(builder, indent);
+                }
+            }
+        } else {
+            length: u32;
+            if kind == .ARRAY {
+                napi_check(napi_get_array_length(napi_env_instance, value, *length));
+            } else if kind == .TYPED_ARRAY {
+                length64: u64;
+                napi_check(napi_get_typedarray_info(napi_env_instance, value, null, *length64, null, null, null));
+                length = xx length64;
+            } else {
+                length_value: napi_value;
+                napi_check(napi_get_named_property(napi_env_instance, value, "length", *length_value));
+                napi_check(napi_get_value_uint32(napi_env_instance, length_value, *length));
+            }
+            if length > 0 {
+                if !min {
+                    append(builder, "\n");
+                }
+                for 0..cast(s64) length - 1 {
+                    indent_to(builder, item_indent);
+                    has_element := true;
+                    if kind == .ARRAY {
+                        napi_check(napi_has_element(napi_env_instance, value, xx it, *has_element));
+                    }
+                    if has_element {
+                        element: napi_value;
+                        napi_check(napi_get_element(napi_env_instance, value, xx it, *element));
+                        stringify(builder, element, indent + 1, depth, *frame, false, min);
+                    }
+                    item_separator(builder, min, it == cast(s64) length - 1);
+                }
+                if !min {
+                    indent_to(builder, indent);
+                }
+            }
+        }
+        append(builder, "]");
+        return;
+    }
+
+    if kind == .MAP || kind == .SET {
+        if hit_max_depth {
+            append(builder, ifx kind == .MAP "[Map]" else "[Set]");
+            return;
+        }
+        append(builder, ifx kind == .MAP "Map {" else "Set {");
+        items := ifx kind == .MAP then v8_map_as_array(value) else v8_set_as_array(value);
+        count: u32;
+        napi_check(napi_get_array_length(napi_env_instance, items, *count));
+        if count > 0 {
+            if !min {
+                append(builder, "\n");
+            }
+            stride: u32 = xx ifx kind == .MAP then 2 else 1;
+            i: u32 = 0;
+            while i < count {
+                indent_to(builder, item_indent);
+                item: napi_value;
+                napi_check(napi_get_element(napi_env_instance, items, i, *item));
+                stringify(builder, item, indent + 1, depth, *frame, false, min);
+                if kind == .MAP {
+                    append(builder, " => ");
+                    napi_check(napi_get_element(napi_env_instance, items, i + 1, *item));
+                    stringify(builder, item, indent + 1, depth, *frame, false, min);
+                }
+                i += stride;
+                item_separator(builder, min, i >= count);
+            }
+            if !min {
+                indent_to(builder, indent);
+            }
+        }
+        append(builder, "}");
+        return;
+    }
+
+    name := string_from_napi_value(v8_constructor_name(value));
+    if hit_max_depth {
+        print_to_builder(builder, "[%]", name);
+        return;
+    }
+    if !min && name != "Object" {
+        print_to_builder(builder, "% ", name);
+    }
+    append(builder, "{");
+
+    keys: [..] Stringify_Key;
+    defer array_free(keys);
+    string_keys, symbol_keys: napi_value;
+    napi_check(napi_get_all_property_names(napi_env_instance, value, .own_only, .enumerable | .skip_symbols, .numbers_to_strings, *string_keys));
+    napi_check(napi_get_all_property_names(napi_env_instance, value, .own_only, .enumerable | .skip_strings, .numbers_to_strings, *symbol_keys));
+    string_count, symbol_count: u32;
+    napi_check(napi_get_array_length(napi_env_instance, string_keys, *string_count));
+    napi_check(napi_get_array_length(napi_env_instance, symbol_keys, *symbol_count));
+    for 0..cast(s64) string_count - 1 {
+        key: napi_value;
+        napi_check(napi_get_element(napi_env_instance, string_keys, xx it, *key));
+        array_add(*keys, .{string_from_napi_value(key), key});
+    }
+    quick_sort(keys, (a: Stringify_Key, b: Stringify_Key) -> int { return compare_strings(a.name, b.name); });
+    for 0..cast(s64) symbol_count - 1 {
+        key: napi_value;
+        napi_check(napi_get_element(napi_env_instance, symbol_keys, xx it, *key));
+        array_add(*keys, .{"", key});
+    }
+    if keys.count > 0 {
+        if !min {
+            append(builder, "\n");
+        }
+        for keys {
+            indent_to(builder, item_indent);
+            stringify(builder, it.key, indent + 1, depth, *frame, false, min);
+            append(builder, ": ");
+            property: napi_value;
+            napi_check(napi_get_property(napi_env_instance, value, it.key, *property));
+            stringify(builder, property, indent + 1, depth, *frame, false, min);
+            item_separator(builder, min, it_index == keys.count - 1);
+        }
+        if !min {
+            indent_to(builder, indent);
+        }
+    }
+    append(builder, "}");
 }
 
 noop :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
@@ -919,9 +1164,7 @@ cleanup_and_report_test_leaks :: (cp: napi_value) {
 
 describe_exception :: (exception: napi_value) -> string {
     if v8_value_kind_of(exception) != .ERROR {
-        inspected: napi_value;
-        napi_check(napi_call_function(napi_env_instance, napi_global, testa_inspect_fn, 1, *exception, *inspected));
-        return string_from_napi_value(inspected);
+        return stringify(exception, min=true);
     }
     name: napi_value;
     napi_check(napi_get_named_property(napi_env_instance, exception, "name".data, *name));
@@ -1483,13 +1726,11 @@ BOOTSTRAP :: #string MJS
 process._linkedBinding('testa');
 import vm from 'node:vm';
 import fs from 'node:fs';
-import { inspect } from 'node:util';
 import { stripTypeScriptTypes, isBuiltin } from 'node:module';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 import { createHook } from 'node:async_hooks';
 
-globalThis.__testa_inspect = inspect;
 
 // TODO: this is always on for now. it should be off in CI (detect via env
 // vars like CI, GITHUB_ACTIONS) and controllable by a boolean cli flag that
@@ -1740,21 +1981,8 @@ main :: () {
             napi_check(napi_create_object(napi_env_instance, *matcher));
             napi_check(napi_create_object(napi_env_instance, *negated_matcher));
 
-            inspect :: (value: napi_value, compact: bool = true, sorted: bool = false) -> string #expand {
-                options, compact_value, sorted_value: napi_value;
-                napi_try(napi_create_object(napi_env_instance, *options));
-                napi_try(napi_get_boolean(napi_env_instance, compact, *compact_value));
-                napi_try(napi_set_named_property(napi_env_instance, options, "compact", compact_value));
-                napi_try(napi_get_boolean(napi_env_instance, sorted, *sorted_value));
-                napi_try(napi_set_named_property(napi_env_instance, options, "sorted", sorted_value));
-
-                args: [2]napi_value;
-                args[0] = value;
-                args[1] = options;
-
-                inspected: napi_value;
-                napi_try(napi_call_function(napi_env_instance, napi_global, testa_inspect_fn, args.count, args.data, *inspected));
-                return string_from_napi_value(inspected);
+            inspect :: (value: napi_value) -> string {
+                return stringify(value, min=true);
             }
 
             throw_error :: (message: string, args: ..Any) #expand {
@@ -2760,7 +2988,6 @@ main :: () {
                 napi_check(napi_set_named_property(napi_env_instance, napi_global, "test".data, test_fn));
                 napi_check(napi_set_named_property(napi_env_instance, napi_global, "it".data, test_fn));
             }
-
             {
                 // hooks
                 napi_check(napi_create_function(napi_env_instance, "beforeAll".data, "beforeAll".count, before_all, null, *before_all_fn));
@@ -2778,7 +3005,6 @@ main :: () {
         }
 
         napi_check(napi_get_named_property(napi_env_instance, napi_global, "__testa_run".data, *testa_run_fn));
-        napi_check(napi_get_named_property(napi_env_instance, napi_global, "__testa_inspect".data, *testa_inspect_fn));
         {
             url: napi_value;
             napi_check(napi_get_named_property(napi_env_instance, napi_global, "URL".data, *url));
