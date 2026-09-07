@@ -3,6 +3,7 @@ name: publish
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
     branches: [main]
   workflow_dispatch: {}
@@ -109,7 +110,7 @@ jobs:
 
       # Builds optimized and writes dist/<platform>/package.json for the
       # @pulgar/<platform> package - see publish.jai. Every run builds and
-      # tests this exact artifact; only workflow_dispatch goes on to publish it.
+      # builds this exact artifact; only a v* tag push goes on to publish it.
       - name: build + package
         shell: bash
         run: ${{ matrix.jai }} publish.jai
@@ -121,7 +122,7 @@ jobs:
 
   publish-platform-packages:
     needs: build
-    if: github.event_name == 'workflow_dispatch'
+    if: github.ref_type == 'tag'
     strategy:
       matrix:
         platform: [linux-x64, darwin-arm64] # win32-x64 not set up yet
@@ -145,7 +146,7 @@ jobs:
 
   publish-root-package:
     needs: publish-platform-packages
-    if: github.event_name == 'workflow_dispatch'
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
