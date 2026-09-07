@@ -540,6 +540,7 @@ watchdog_proc :: (thread: *Thread) -> s64 {
 Leak :: struct {
     type: string;
     async_id: s64;
+    stack: string;
 }
 
 cwd_prefix: string;
@@ -592,14 +593,7 @@ print_leaks :: (leaks: []Leak) {
     internal := 0;
     for leaks {
         if it.async_id >= 0 {
-            global, fn, arg, result: napi_value;
-            napi_check(napi_get_global(napi_env_instance, *global));
-            napi_check(napi_get_named_property(napi_env_instance, global, "__testa_stack".data, *fn));
-            napi_check(napi_create_int64(napi_env_instance, it.async_id, *arg));
-            napi_check(napi_call_function(napi_env_instance, global, fn, 1, *arg, *result));
-            stack := string_from_napi_value(result);
-
-            origin, is_internal := get_stack_trace_origin(stack);
+            origin, is_internal := get_stack_trace_origin(it.stack);
             if is_internal {
                 internal += 1;
             } else {
@@ -673,6 +667,16 @@ quiesce_report :: (leaks: *[..]Leak, cp: napi_value) {
             napi_check(napi_get_value_int64(napi_env_instance, item, *leak.async_id));
             array_add(leaks, leak);
         }
+    }
+
+    for * leaks.* {
+        if it.async_id < 0 continue;
+        global, fn, arg, result: napi_value;
+        napi_check(napi_get_global(napi_env_instance, *global));
+        napi_check(napi_get_named_property(napi_env_instance, global, "__testa_stack".data, *fn));
+        napi_check(napi_create_int64(napi_env_instance, it.async_id, *arg));
+        napi_check(napi_call_function(napi_env_instance, global, fn, 1, *arg, *result));
+        it.stack = string_from_napi_value(result);
     }
 }
 
