@@ -47,7 +47,13 @@ SHIM_EXPORT napi_value v8_promise_result(v8_promise* promise);
 SHIM_EXPORT void v8_promise_unref(v8_promise* promise);
 
 typedef enum v8_value_kind {
-    V8_VALUE_PRIMITIVE,
+    V8_VALUE_UNDEFINED,
+    V8_VALUE_NULL,
+    V8_VALUE_BOOLEAN,
+    V8_VALUE_NUMBER,
+    V8_VALUE_STRING,
+    V8_VALUE_SYMBOL,
+    V8_VALUE_BIGINT,
     V8_VALUE_OBJECT,
     V8_VALUE_ARRAY,
     V8_VALUE_FUNCTION,

@@ -170,7 +170,13 @@ void v8_promise_unref(v8_promise* promise) {
 v8_value_kind v8_value_kind_of(napi_value value) {
     v8::Local<v8::Value> v;
     memcpy(static_cast<void*>(&v), &value, sizeof(value));
-    if (!v->IsObject())            return V8_VALUE_PRIMITIVE;
+    if (v->IsUndefined())          return V8_VALUE_UNDEFINED;
+    if (v->IsNull())               return V8_VALUE_NULL;
+    if (v->IsBoolean())            return V8_VALUE_BOOLEAN;
+    if (v->IsNumber())             return V8_VALUE_NUMBER;
+    if (v->IsString())             return V8_VALUE_STRING;
+    if (v->IsSymbol())             return V8_VALUE_SYMBOL;
+    if (v->IsBigInt())             return V8_VALUE_BIGINT;
     if (v->IsArray())              return V8_VALUE_ARRAY;
     if (v->IsFunction())           return V8_VALUE_FUNCTION;
     if (v->IsDate())               return V8_VALUE_DATE;

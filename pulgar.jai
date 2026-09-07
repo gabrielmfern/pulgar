@@ -114,7 +114,13 @@ deep_equal :: (a: napi_value, b: napi_value, parent: *Eq_Frame) -> bool {
     }
 
     if kind == {
-        case .PRIMITIVE; #through;
+        case .UNDEFINED; #through;
+        case .NULL;      #through;
+        case .BOOLEAN;   #through;
+        case .NUMBER;    #through;
+        case .STRING;    #through;
+        case .SYMBOL;    #through;
+        case .BIGINT;    #through;
         case .FUNCTION;
             return false;
         case .NUMBER_OBJECT;
@@ -309,6 +315,33 @@ string_from_napi_value :: (value: napi_value) -> string {
     str.count = xx size;
     return str;
 }
+
+// stringify :: (value: napi_value) -> string {
+//     if v8_value_kind_of(value) == {
+//         case v8_value_kind.BOOLEAN_OBJECT; #through;
+//         case v8_value_kind.BOOLEAN;
+//             b: bool;
+//             napi_check(napi_get_value_bool(napi_env_instance, value, *b));
+//             return ifx b "true" else "false";
+//         case v8_value_kind.UNDEFINED;
+//             return "undefined";
+//         case v8_value_kind.NULL;
+//             return "null";
+//         case v8_value_kind.NUMBER_OBJECT; #through;
+//         case v8_value_kind.NUMBER;
+//             x: float64;
+//             napi_check(napi_get_value_double(napi_env_instance, value, *x));
+//             return sprint("%", FormatFloat.{value=x, trailing_width=17, mode=.SHORTEST});
+//         case v8_value_kind.BIGINT_OBJECT; #through;
+//         case v8_value_kind.BIGINT;
+//             stringified_bigint: napi_value;
+//             napi_check(napi_coerce_to_string(napi_env_instance, value, *stringified_bigint));
+//             return sprint("%n", string_from_napi_value(stringified_bigint));
+//         case v8_value_kind.STRING_OBJECT; #through;
+//         case v8_value_kind.STRING;
+//             return string_from_napi_value(value);
+//     }
+// }
 
 noop :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
     return null;
