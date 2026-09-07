@@ -213,11 +213,70 @@ int v8_boolean_object_value(napi_value value) {
     return v.As<v8::BooleanObject>()->ValueOf();
 }
 
+napi_value v8_function_name(napi_value value) {
+    v8::Local<v8::Value> v;
+    memcpy(static_cast<void*>(&v), &value, sizeof(value));
+    v8::Local<v8::Value> name = v.As<v8::Function>()->GetName();
+    napi_value out;
+    memcpy(&out, static_cast<void*>(&name), sizeof(out));
+    return out;
+}
+
+static napi_value to_napi(v8::Local<v8::Value> local) {
+    napi_value out;
+    memcpy(&out, static_cast<void*>(&local), sizeof(out));
+    return out;
+}
+
+static v8::Local<v8::Value> to_local(napi_value value) {
+    v8::Local<v8::Value> v;
+    memcpy(static_cast<void*>(&v), &value, sizeof(value));
+    return v;
+}
+
+napi_value v8_constructor_name(napi_value value) {
+    return to_napi(to_local(value).As<v8::Object>()->GetConstructorName());
+}
+
+napi_value v8_symbol_description(napi_value value) {
+    v8::Local<v8::Value> v = to_local(value);
+    v8::Local<v8::Symbol> symbol = v->IsSymbolObject() ? v.As<v8::SymbolObject>()->ValueOf() : v.As<v8::Symbol>();
+    return to_napi(symbol->Description(v8::Isolate::GetCurrent()));
+}
+
+napi_value v8_regexp_source(napi_value value) {
+    return to_napi(to_local(value).As<v8::RegExp>()->GetSource());
+}
+
+int v8_regexp_flags(napi_value value) {
+    return (int)to_local(value).As<v8::RegExp>()->GetFlags();
+}
+
+size_t v8_map_size(napi_value value) {
+    return to_local(value).As<v8::Map>()->Size();
+}
+
+size_t v8_set_size(napi_value value) {
+    return to_local(value).As<v8::Set>()->Size();
+}
+
+napi_value v8_map_as_array(napi_value value) {
+    return to_napi(to_local(value).As<v8::Map>()->AsArray());
+}
+
+napi_value v8_set_as_array(napi_value value) {
+    return to_napi(to_local(value).As<v8::Set>()->AsArray());
+}
+
 int v8_same_object(napi_value a, napi_value b) {
     v8::Local<v8::Value> va, vb;
     memcpy(static_cast<void*>(&va), &a, sizeof(a));
     memcpy(static_cast<void*>(&vb), &b, sizeof(b));
     return va == vb;
+}
+
+napi_value v8_symbol_object_value(napi_value value) {
+    return to_napi(to_local(value).As<v8::SymbolObject>()->ValueOf());
 }
 
 napi_value v8_string_object_value(napi_value value) {

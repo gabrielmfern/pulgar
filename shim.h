@@ -81,7 +81,17 @@ SHIM_EXPORT v8_value_kind v8_value_kind_of(napi_value value);
 SHIM_EXPORT double v8_number_object_value(napi_value value);
 SHIM_EXPORT int v8_boolean_object_value(napi_value value);
 SHIM_EXPORT napi_value v8_string_object_value(napi_value value);
+SHIM_EXPORT napi_value v8_symbol_object_value(napi_value value);
 SHIM_EXPORT int v8_same_object(napi_value a, napi_value b);
+SHIM_EXPORT napi_value v8_function_name(napi_value value);
+SHIM_EXPORT napi_value v8_constructor_name(napi_value value);
+SHIM_EXPORT napi_value v8_symbol_description(napi_value value);
+SHIM_EXPORT napi_value v8_regexp_source(napi_value value);
+SHIM_EXPORT int v8_regexp_flags(napi_value value);
+SHIM_EXPORT size_t v8_map_size(napi_value value);
+SHIM_EXPORT size_t v8_set_size(napi_value value);
+SHIM_EXPORT napi_value v8_map_as_array(napi_value value);
+SHIM_EXPORT napi_value v8_set_as_array(napi_value value);
 
 #ifdef __cplusplus
 }
