@@ -30,12 +30,11 @@ jobs:
             jai: jai-macos
             lld: lld-macos
             binary: pulgar
-          # windows not set up yet
-          # - os: windows-latest
-          #   platform: win32-x64
-          #   jai: jai.exe
-          #   lld: lld.exe
-          #   binary: pulgar.exe
+          - os: windows-latest
+            platform: win32-x64
+            jai: jai.exe
+            lld: lld.exe
+            binary: pulgar.exe
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -140,7 +139,7 @@ jobs:
       - run: npm install -g npm@latest
       - run: |
           for dir in pkg/pkg-*; do
-            chmod +x "$dir/pulgar"
+            chmod +x "$dir"/pulgar*
             npm publish --access public "./$dir"
           done
       - run: npm publish --access public
