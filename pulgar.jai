@@ -320,6 +320,124 @@ stringify :: (value: napi_value, min := false) -> string {
     return builder_to_string(*builder);
 }
 
+// see https://gist.github.com/jasonm23/449e7c572b46942361bc808357019dda
+print_diff :: (from: string, to: string) {
+    from_lines := split(from, "\n"[0]);
+    to_lines := split(to, "\n"[0]);
+
+    Edit_Operation :: enum {
+        MATCH;
+        INSERT;
+        DELETE;
+    };
+
+    reverse_edit_operations :: (a: string, b: string) -> []Edit_Operation {
+        N := b.count;
+        M := a.count;
+        edit_count_matrix := NewArray((M + 1) * (N + 1), s64);
+        for j: 0..N {
+            edit_count_matrix[j] = j;
+        }
+        for i: 0..M {
+            edit_count_matrix[i * (N + 1)] = i;
+        }
+
+        for i: 1..M {
+            for j: 1..N {
+                if a[i - 1] != b[j - 1] {
+                    edit_count_matrix[i * (N + 1) + j] = min(
+                        edit_count_matrix[i * (N + 1) + (j - 1)] + 1, // insertion in a
+                        edit_count_matrix[(i - 1) * (N + 1) + j] + 1, // deletion in a
+                    );
+                } else {
+                    edit_count_matrix[i * (N + 1) + j] = edit_count_matrix[(i - 1) * (N + 1) + (j - 1)]; // match (no edit needed)
+                }
+            }
+        }
+
+        // this is at most M + 1 + N, but can be smaller
+        operations := NewArray((M + 1) + N, Edit_Operation);
+        operationsCount: s64 = 0;
+        i: s64 = M;
+        j: s64 = N;
+        while i > 0 || j > 0 {
+            if i == 0 {
+                operations[operationsCount] = Edit_Operation.INSERT;
+                operationsCount += 1;
+                j -= 1;
+            } else if j == 0 {
+                operations[operationsCount] = Edit_Operation.DELETE;
+                operationsCount += 1;
+                i -= 1;
+            } else if a[i - 1] != b[j - 1] {
+                current := edit_count_matrix[i * (N + 1) + j];
+                if current == edit_count_matrix[i * (N + 1) + (j - 1)] + 1 {
+                    operations[operationsCount] = Edit_Operation.INSERT;
+                    operationsCount += 1;
+                    j -= 1;
+                } else if current == edit_count_matrix[(i - 1) * (N + 1) + j] + 1 {
+                    operations[operationsCount] = Edit_Operation.DELETE;
+                    operationsCount += 1;
+                    i -= 1;
+                }
+            } else {
+                operations[operationsCount] = Edit_Operation.MATCH;
+                operationsCount += 1;
+                i -= 1;
+                j -= 1;
+            }
+        }
+
+        return array_view(operations, 0, operationsCount);
+    }
+
+    if from_lines.count == 1 && to_lines.count == 1 {
+        edit_operations := reverse_edit_operations(from, to);
+        current_operation := Edit_Operation.MATCH; 
+        i := 0;
+        j := 0;
+        for < edit_operations {
+            if it == {
+                case Edit_Operation.MATCH;
+                    if current_operation != Edit_Operation.MATCH {
+                        reset_print_styling();
+                    }
+                    append(*output, from[i]);
+                    i += 1;
+                    j += 1;
+                    current_operation = Edit_Operation.MATCH;
+                case Edit_Operation.INSERT;
+                    if current_operation != Edit_Operation.INSERT {
+                        reset_print_styling();
+                        set_print_color(.green);
+                    }
+                    append(*output, to[j]);
+                    j += 1;
+                    current_operation = Edit_Operation.INSERT;
+                case Edit_Operation.DELETE;
+                    if current_operation != Edit_Operation.DELETE {
+                        reset_print_styling();
+                        set_print_color(.red);
+                    }
+                    append(*output, from[i]);
+                    i += 1;
+                    current_operation = Edit_Operation.DELETE;
+            }
+        }
+    } else {
+        // TODO;
+    }
+    reset_print_styling();
+    write_builder(*output);
+}
+
+test_print_diff :: () {
+    use_colors = true;
+    print_diff("hayllo", "hello");
+}
+
+STRINGIFY_MAX_DEPTH :: 20;
+
 Stringify_Frame :: struct {
     value: napi_value;
     parent: *Stringify_Frame;
@@ -329,8 +447,6 @@ Stringify_Key :: struct {
     name: string;
     key: napi_value;
 }
-
-STRINGIFY_MAX_DEPTH :: 20;
 
 stringify :: (builder: *String_Builder, value: napi_value, indent: int, depth: int, parent: *Stringify_Frame, called_to_json: bool, min: bool) {
     indent_to :: (builder: *String_Builder, level: int) {
@@ -450,14 +566,13 @@ stringify :: (builder: *String_Builder, value: napi_value, indent: int, depth: i
     }
     frame := Stringify_Frame.{value, parent};
     depth += 1;
-    hit_max_depth := depth > STRINGIFY_MAX_DEPTH;
     item_indent := ifx min 0 else indent + 1;
 
     scope: napi_handle_scope;
     napi_check(napi_open_handle_scope(napi_env_instance, *scope));
     defer napi_check(napi_close_handle_scope(napi_env_instance, scope));
 
-    if !hit_max_depth && !called_to_json {
+    if depth <= STRINGIFY_MAX_DEPTH && !called_to_json {
         has_to_json: bool;
         napi_check(napi_has_named_property(napi_env_instance, value, "toJSON", *has_to_json));
         if has_to_json {
@@ -474,7 +589,7 @@ stringify :: (builder: *String_Builder, value: napi_value, indent: int, depth: i
 
     if kind == .ARRAY || kind == .TYPED_ARRAY || kind == .ARGUMENTS || kind == .ARRAY_BUFFER || kind == .DATA_VIEW {
         name := ifx kind == .ARGUMENTS then "Arguments" else string_from_napi_value(v8_constructor_name(value));
-        if hit_max_depth {
+        if depth > STRINGIFY_MAX_DEPTH {
             print_to_builder(builder, "[%]", name);
             return;
         }
@@ -543,7 +658,7 @@ stringify :: (builder: *String_Builder, value: napi_value, indent: int, depth: i
     }
 
     if kind == .MAP || kind == .SET {
-        if hit_max_depth {
+        if depth > STRINGIFY_MAX_DEPTH {
             append(builder, ifx kind == .MAP "[Map]" else "[Set]");
             return;
         }
@@ -579,7 +694,7 @@ stringify :: (builder: *String_Builder, value: napi_value, indent: int, depth: i
     }
 
     name := string_from_napi_value(v8_constructor_name(value));
-    if hit_max_depth {
+    if depth > STRINGIFY_MAX_DEPTH {
         print_to_builder(builder, "[%]", name);
         return;
     }
@@ -1001,9 +1116,9 @@ quiesce_report :: (leaks: *[..]Leak, cp: napi_value) {
 // terminal work
 
 Color :: enum {
-    black; red; green; yellow; blue; cyan; white;
+    black; red; green; yellow; blue; magenta; cyan; white;
 
-    brightBlack; brightRed; brightGreen; brightYellow; brightBlue; brightCyan; brightWhite;
+    brightBlack; brightRed; brightGreen; brightYellow; brightBlue; brightMagenta; brightCyan; brightWhite;
 }
 
 colors :: string.[
@@ -1012,11 +1127,23 @@ colors :: string.[
     "\e[90m", "\e[91m", "\e[92m", "\e[93m", "\e[94m", "\e[95m", "\e[96m", "\e[97m"
 ];
 
+background_colors :: string.[
+    "\e[40m", "\e[41m", "\e[42m", "\e[43m", "\e[44m", "\e[45m", "\e[46m", "\e[47m",
+
+    "\e[100m", "\e[101m", "\e[102m", "\e[103m", "\e[104m", "\e[105m", "\e[106m", "\e[107m"
+];
+
 use_colors: bool;
 
 set_print_color :: (color: Color) {
     if use_colors {
         print(*output, colors[xx color]);
+    }
+}
+
+set_print_background_color :: (color: Color) {
+    if use_colors {
+        print(*output, background_colors[xx color]);
     }
 }
 
