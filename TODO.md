@@ -45,7 +45,7 @@ TO-DO list for public launch:
     - [x] `afterAll`
     - [x] `beforeEach`
     - [x] `afterEach`
-    - [ ] Implement the view of the diff for the expect failure
+    - [x] Implement the view of the diff for the expect failure
 - [ ] documentation
     - [ ] write the README
     - [ ] write about this exploration
