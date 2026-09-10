@@ -331,7 +331,7 @@ print_diff :: (from: string, to: string) {
         DELETE;
     };
 
-    reverse_edit_operations :: (a: string, b: string) -> []Edit_Operation {
+    reverse_edit_operations :: (a: []$T, b: []T) -> []Edit_Operation {
         N := b.count;
         M := a.count;
         edit_count_matrix := NewArray((M + 1) * (N + 1), s64);
@@ -392,7 +392,7 @@ print_diff :: (from: string, to: string) {
     }
 
     if from_lines.count == 1 && to_lines.count == 1 {
-        edit_operations := reverse_edit_operations(from, to);
+        edit_operations := reverse_edit_operations(cast([]u8) from, cast([]u8) to);
         current_operation := Edit_Operation.MATCH; 
         i := 0;
         j := 0;
@@ -424,8 +424,40 @@ print_diff :: (from: string, to: string) {
                     current_operation = Edit_Operation.DELETE;
             }
         }
+        print(*output, "\n");
     } else {
-        // TODO;
+        edit_operations := reverse_edit_operations(from_lines, to_lines);
+        current_operation := Edit_Operation.MATCH; 
+        i := 0;
+        j := 0;
+        for < edit_operations {
+            if it == {
+                case Edit_Operation.MATCH;
+                    if current_operation != Edit_Operation.MATCH {
+                        reset_print_styling();
+                    }
+                    print(*output, "%\n", from_lines[i]);
+                    i += 1;
+                    j += 1;
+                    current_operation = Edit_Operation.MATCH;
+                case Edit_Operation.INSERT;
+                    if current_operation != Edit_Operation.INSERT {
+                        reset_print_styling();
+                        set_print_color(.green);
+                    }
+                    print(*output, "+ %\n", to_lines[j]);
+                    j += 1;
+                    current_operation = Edit_Operation.INSERT;
+                case Edit_Operation.DELETE;
+                    if current_operation != Edit_Operation.DELETE {
+                        reset_print_styling();
+                        set_print_color(.red);
+                    }
+                    print(*output, "- %\n", from_lines[i]);
+                    i += 1;
+                    current_operation = Edit_Operation.DELETE;
+            }
+        }
     }
     reset_print_styling();
     write_builder(*output);
@@ -434,6 +466,26 @@ print_diff :: (from: string, to: string) {
 test_print_diff :: () {
     use_colors = true;
     print_diff("hayllo", "hello");
+    print_diff(#string END
+{
+  "name": "gabriel",
+  "age": 30,
+  "tags": [
+    "a",
+    "b"
+  ]
+}
+END, #string END
+{
+  "name": "gabriel",
+  "age": 31,
+  "tags": [
+    "a",
+    "c",
+    "d"
+  ]
+}
+END);
 }
 
 STRINGIFY_MAX_DEPTH :: 20;
