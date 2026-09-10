@@ -324,6 +324,12 @@ stringify :: (value: napi_value, min := false) -> string {
 print_diff :: (from: string, to: string) {
     from_lines := split(from, "\n"[0]);
     to_lines := split(to, "\n"[0]);
+    if from_lines.count > 0 && from_lines[from_lines.count - 1].count == 0 {
+        from_lines.count -= 1;
+    }
+    if to_lines.count > 0 && to_lines[to_lines.count - 1].count == 0 {
+        to_lines.count -= 1;
+    }
 
     Edit_Operation :: enum {
         MATCH;
@@ -436,7 +442,7 @@ print_diff :: (from: string, to: string) {
                     if current_operation != Edit_Operation.MATCH {
                         reset_print_styling();
                     }
-                    print(*output, "%\n", from_lines[i]);
+                    print(*output, "  %\n", from_lines[i]);
                     i += 1;
                     j += 1;
                     current_operation = Edit_Operation.MATCH;
