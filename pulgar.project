@@ -5,6 +5,12 @@ target:
 {
   executable: "dist/linux-x64/pulgar"
   debug_subprocesses: 1
-  enabled: 1
   working_directory: "tests/suites"
+  enabled: 0
+}
+target:
+{
+  executable: "dist/linux-x64/pulgar-test"
+  working_directory: "dist/linux-x64/"
+  enabled: 1
 }

@@ -13,7 +13,9 @@
 #run build();
 
 build :: () {
-    publish := array_find(get_build_options().compile_time_command_line, "publish");
+    command_line := get_build_options().compile_time_command_line;
+    publish := array_find(command_line, "publish");
+    test := array_find(command_line, "test") || array_find(command_line, "-test");
     debug := get_build_options().array_bounds_check == .ON;
     jails :: #exists(JAILS_DIAGNOSTICS_BUILD);
 
@@ -124,7 +126,7 @@ build :: () {
         options.output_type = .NO_OUTPUT;
     } else {
         options.output_type = .EXECUTABLE;
-        options.output_executable_name = "pulgar";
+        options.output_executable_name = ifx test then "pulgar-test" else "pulgar";
         options.output_path = dist_dir;
         #if OS == .LINUX {
             options.additional_linker_arguments = .["-l:libstdc++.so.6", "-l:libgcc_s.so.1"];
@@ -172,7 +174,70 @@ JSON, platform, arch, version, exe, libnode_lib);
             }
         }
     }
+    if test {
+        options.entry_point_name = "run_tests";
+    }
     set_build_options(options, w);
+    if test {
+        compiler_begin_intercept(w);
+    }
     add_build_string(tprint("DEBUG :: %;", debug), w);
     add_build_file("pulgar.jai", w);
+    if test {
+        add_test_runner(w);
+        compiler_end_intercept(w);
+    }
+}
+
+add_test_runner :: (w: Workspace) {
+    tests: [..]string;
+    added := false;
+    while true {
+        message := compiler_wait_for_message();
+        if message.workspace != w {
+            continue;
+        }
+        if message.kind == {
+            case .TYPECHECKED;
+                typechecked := cast(*Message_Typechecked) message;
+                for typechecked.procedure_headers {
+                    header := it.expression;
+                    if !begins_with(header.name, "test_") {
+                        continue;
+                    }
+                    if header.arguments.count || header.returns.count {
+                        continue;
+                    }
+                    if !header.enclosing_load || !header.enclosing_load.enclosing_import {
+                        continue;
+                    }
+                    if header.enclosing_load.enclosing_import.module_type != .MAIN_PROGRAM {
+                        continue;
+                    }
+                    array_add(*tests, copy_string(header.name));
+                }
+            case .PHASE;
+                phase := cast(*Message_Phase) message;
+                if phase.phase == .TYPECHECKED_ALL_WE_CAN && !added {
+                    added = true;
+                    add_build_string(test_runner_source(tests), w);
+                }
+            case .COMPLETE;
+                break;
+        }
+    }
+}
+
+test_runner_source :: (tests: []string) -> string {
+    builder: String_Builder;
+    append(*builder, #string JAI
+#import "Basic";
+
+run_tests :: () {
+JAI);
+    for tests {
+        print_to_builder(*builder, "    print(\"%1\\n\");\n    %1();\n    print(\"\\nok\\n\\n\");\n", it);
+    }
+    print_to_builder(*builder, "    print(\"all % tests passed\\n\");\n}\n", tests.count);
+    return builder_to_string(*builder);
 }
