@@ -402,6 +402,7 @@ print_diff :: (from: string, to: string) {
         current_operation := Edit_Operation.MATCH; 
         i := 0;
         j := 0;
+        print(*output, "    ");
         for < edit_operations {
             if it == {
                 case Edit_Operation.MATCH;
@@ -442,7 +443,7 @@ print_diff :: (from: string, to: string) {
                     if current_operation != Edit_Operation.MATCH {
                         reset_print_styling();
                     }
-                    print(*output, "  %\n", from_lines[i]);
+                    print(*output, "      %\n", from_lines[i]);
                     i += 1;
                     j += 1;
                     current_operation = Edit_Operation.MATCH;
@@ -451,7 +452,7 @@ print_diff :: (from: string, to: string) {
                         reset_print_styling();
                         set_print_color(.green);
                     }
-                    print(*output, "+ %\n", to_lines[j]);
+                    print(*output, "    + %\n", to_lines[j]);
                     j += 1;
                     current_operation = Edit_Operation.INSERT;
                 case Edit_Operation.DELETE;
@@ -459,23 +460,23 @@ print_diff :: (from: string, to: string) {
                         reset_print_styling();
                         set_print_color(.red);
                     }
-                    print(*output, "- %\n", from_lines[i]);
+                    print(*output, "    - %\n", from_lines[i]);
                     i += 1;
                     current_operation = Edit_Operation.DELETE;
             }
         }
     }
     reset_print_styling();
-    write_builder(*output);
 }
 
 test_print_diff :: () {
     use_colors = true;
+    defer write_builder(*output);
     print_diff("hayllo", "hello");
     print_diff(#string END
 {
   "name": "gabriel",
-  "age": 30,
+  "port": 3000,
   "tags": [
     "a",
     "b"
@@ -484,7 +485,7 @@ test_print_diff :: () {
 END, #string END
 {
   "name": "gabriel",
-  "age": 31,
+  "port": 3001,
   "tags": [
     "a",
     "c",
@@ -1375,6 +1376,23 @@ print_test_exception :: (exception: napi_value) {
         print(*output, "%", describe_exception(exception));
         reset_print_styling();
         print(*output, " at %\n", get_stack_trace_origin(string_from_napi_value(exception_stack)));
+
+        has_expected, has_actual: bool;
+        napi_check(napi_has_named_property(napi_env_instance, exception, "expected", *has_expected));
+        napi_check(napi_has_named_property(napi_env_instance, exception, "actual", *has_actual));
+        if has_expected && has_actual {
+            expected, actual: napi_value;
+            napi_check(napi_get_named_property(napi_env_instance, exception, "expected".data, *expected));
+            napi_check(napi_get_named_property(napi_env_instance, exception, "actual".data, *actual));
+            print(*output, "\n");
+            set_print_color(.red);
+            print(*output, "    - Expected\n");
+            set_print_color(.green);
+            print(*output, "    + Received\n");
+            reset_print_styling();
+            print(*output, "\n");
+            print_diff(stringify(expected), stringify(actual));
+        }
     } else if valuetype != .napi_undefined && valuetype != .napi_null {
         exception_stringified: napi_value;
         napi_check(napi_coerce_to_string(napi_env_instance, exception, *exception_stringified));
@@ -2222,7 +2240,13 @@ main :: () {
                     napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
 
                     if !deep_equal(actual, expected, null) {
-                        throw_error("expected % to equal %", inspect(actual), inspect(expected));
+                        text := sprint("expected % to equal %", inspect(actual), inspect(expected));
+                        text_value, error: napi_value;
+                        napi_try(napi_create_string_utf8(env, text.data, xx text.count, *text_value));
+                        napi_try(napi_create_error(env, null, text_value, *error));
+                        napi_try(napi_set_named_property(env, error, "actual".data, actual));
+                        napi_try(napi_set_named_property(env, error, "expected".data, expected));
+                        napi_try(napi_throw(env, error));
                     }
                 }
                 return null;
