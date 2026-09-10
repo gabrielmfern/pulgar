@@ -67,7 +67,8 @@ jobs:
             --pattern "${{ matrix.jai }}" --pattern "${{ matrix.lld }}" --pattern modules.tar.gz \
             --dir "$RUNNER_TEMP/jai/bin" \
             --clobber
-          (cd "$RUNNER_TEMP/jai" && tar -xzf bin/modules.tar.gz)
+          if [ "$RUNNER_OS" = Windows ]; then exclude="--exclude=*/linux/*"; fi
+          (cd "$RUNNER_TEMP/jai" && tar -xzf bin/modules.tar.gz $exclude)
           chmod +x "$RUNNER_TEMP/jai/bin/${{ matrix.jai }}" "$RUNNER_TEMP/jai/bin/${{ matrix.lld }}" || true
           echo "$RUNNER_TEMP/jai/bin" >> "$GITHUB_PATH"
 
