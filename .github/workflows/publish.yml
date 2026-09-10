@@ -67,7 +67,7 @@ jobs:
             --pattern "${{ matrix.jai }}" --pattern "${{ matrix.lld }}" --pattern modules.tar.gz \
             --dir "$RUNNER_TEMP/jai/bin" \
             --clobber
-          tar -C "$RUNNER_TEMP/jai" -xzf "$RUNNER_TEMP/jai/bin/modules.tar.gz"
+          (cd "$RUNNER_TEMP/jai" && tar -xzf bin/modules.tar.gz)
           chmod +x "$RUNNER_TEMP/jai/bin/${{ matrix.jai }}" "$RUNNER_TEMP/jai/bin/${{ matrix.lld }}" || true
           echo "$RUNNER_TEMP/jai/bin" >> "$GITHUB_PATH"
 
