@@ -132,6 +132,8 @@ build :: () {
             options.additional_linker_arguments = .["-l:libstdc++.so.6", "-l:libgcc_s.so.1"];
         } else #if OS == .MACOS {
             options.additional_linker_arguments = .["-lc++"];
+        } else #if OS == .WINDOWS {
+            options.additional_linker_arguments = .["libcpmt.lib"];
         }
         make_directory_if_it_does_not_exist(dist_dir, recursive=true);
         if !copy_file(tprint("%/%", libnode_dir, libnode_lib), tprint("%/%", dist_dir, libnode_lib)) {
