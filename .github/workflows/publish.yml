@@ -163,4 +163,13 @@ jobs:
               echo "**Full Changelog**: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/$prev...$GITHUB_REF_NAME"
             fi
           } > notes.md
-          gh release create "$GITHUB_REF_NAME" --notes-file notes.md
+          for dir in pkg/pkg-*; do
+            platform=${dir#pkg/pkg-}
+            files=$(jq -r '.files[]' "$dir/package.json")
+            if [ "$platform" = win32-x64 ]; then
+              (cd "$dir" && zip "$GITHUB_WORKSPACE/pulgar-$platform.zip" $files)
+            else
+              tar -czf "pulgar-$platform.tar.gz" -C "$dir" $files
+            fi
+          done
+          gh release create "$GITHUB_REF_NAME" --notes-file notes.md pulgar-*.tar.gz pulgar-*.zip
