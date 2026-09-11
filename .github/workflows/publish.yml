@@ -130,6 +130,9 @@ jobs:
     environment: npm-publish
     steps:
       - uses: actions/checkout@v4
+        with:
+          # full history + tags, so the release notes can diff against the previous tag
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           path: pkg
@@ -147,4 +150,17 @@ jobs:
       - if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --generate-notes
+        run: |
+          # previous v* tag reachable from this one; empty on the first release, which then lists everything
+          prev=$(git describe --tags --abbrev=0 --match 'v*' "$GITHUB_REF_NAME^" 2>/dev/null || true)
+          {
+            echo "## Commits"
+            echo
+            git log --no-merges --pretty=format:'- %s (%h)' "${prev:+$prev..}$GITHUB_REF_NAME"
+            echo
+            if [ -n "$prev" ]; then
+              echo
+              echo "**Full Changelog**: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/$prev...$GITHUB_REF_NAME"
+            fi
+          } > notes.md
+          gh release create "$GITHUB_REF_NAME" --notes-file notes.md
