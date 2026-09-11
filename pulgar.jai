@@ -399,7 +399,7 @@ print_diff :: (from: string, to: string) {
 
     if from_lines.count == 1 && to_lines.count == 1 {
         edit_operations := reverse_edit_operations(cast([]u8) from, cast([]u8) to);
-        current_operation := Edit_Operation.MATCH; 
+        current_operation := Edit_Operation.MATCH;
         i := 0;
         j := 0;
         print(*output, "    ");
@@ -434,7 +434,7 @@ print_diff :: (from: string, to: string) {
         print(*output, "\n");
     } else {
         edit_operations := reverse_edit_operations(from_lines, to_lines);
-        current_operation := Edit_Operation.MATCH; 
+        current_operation := Edit_Operation.MATCH;
         i := 0;
         j := 0;
         for < edit_operations {
@@ -843,8 +843,8 @@ on_uncaught_exception :: (env: napi_env, info: napi_callback_info) -> napi_value
 }
 
 call_testing_function :: (
-    callback: napi_value, 
-    this: napi_value, 
+    callback: napi_value,
+    this: napi_value,
     timeout_ms: s64
 ) -> success: bool, exception: napi_value {
     success := true;
@@ -944,19 +944,25 @@ call_testing_function :: (
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// program interruption 
+// program interruption
 
 InterruptionReason :: enum { NONE; TIMEOUT; SIGINT; }
 interruption: InterruptionReason = .NONE;
 stdout_is_tty: bool;
 
+#if OS == .WINDOWS {
+    kernel32 :: #library,system "kernel32";
+    GetConsoleOutputCP :: () -> u32 #foreign kernel32; // missing from the Windows module
+
+    // We print UTF-8 (✔, μs), but consoles default to the OEM code page (e.g. 850), which turns those bytes into
+    // mojibake. The code page belongs to the console, not our process, so it has to be put back before we exit.
+    original_console_output_cp: u32;
+}
+
 Watchdog :: struct {
     thread: Thread;
     wake: Semaphore;
     mutex: Mutex;
-
-    // we store this in the struct because it's going to the watchdog thread
-    node_setup: *node_common_environment_setup;
 
     deadline_ms: s64;
     // someone called watchdog_shutdown
@@ -964,8 +970,7 @@ Watchdog :: struct {
 }
 watchdog: Watchdog;
 
-watchdog_init :: (w: *Watchdog, setup: *node_common_environment_setup) {
-    w.node_setup = setup;
+watchdog_init :: (w: *Watchdog) {
     init(*w.wake);
     init(*w.mutex);
     thread_init(*w.thread, watchdog_proc, name = "Watchdog");
@@ -1005,7 +1010,7 @@ watchdog_proc :: (thread: *Thread) -> s64 {
         if w.deadline_ms != 0 {
             remaining := w.deadline_ms - to_milliseconds(current_time_monotonic());
             if remaining <= 0 {
-                node_stop_event_loop(w.node_setup);
+                node_stop_event_loop(node_setup);
                 w.deadline_ms = 0;
                 atomic_store(*interruption, .TIMEOUT);
                 unlock(*w.mutex);
@@ -1060,10 +1065,10 @@ get_stack_trace_origin :: (stack: string) -> origin: string, internal: bool {
     origin: string;
     for line: split(stack, "\n") {
         // TODO: --verbose (?) flag that doesn't filter node internal leaks
-        if contains(line, "    at ") && 
-        !contains(line, "__bootstrap__") && 
-        !contains(line, "node:internal/async_hooks") && 
-        !contains(line, "(node:") && 
+        if contains(line, "    at ") &&
+        !contains(line, "__bootstrap__") &&
+        !contains(line, "node:internal/async_hooks") &&
+        !contains(line, "(node:") &&
         !contains(line, "at node:") {
             origin = line;
             break;
@@ -2049,6 +2054,11 @@ main :: () {
     set_allocators(*test_pool);
     init_string_builder(*output);
 
+    // Pools are not thread-safe, and on Windows the allocator is copied over to the
+    // other thread which causes an error about the Pool's allocator not being thread-safe
+    watchdog_init(*watchdog);
+    defer watchdog_shutdown(*watchdog);
+
     push_context pool_context {
         test_context = context;
         test_context.allocator.proc = pool_allocator_proc;
@@ -2088,12 +2098,8 @@ main :: () {
         if !node_setup exit(1);
         node_env = node_common_environment_setup_env(node_setup);
 
-        watchdog_init(*watchdog, node_setup);
-        defer watchdog_shutdown(*watchdog);
-
         #if OS == .WINDOWS {
             #import "Windows";
-            kernel32 :: #library,system "kernel32";
             SetConsoleCtrlHandler :: (handler: (type: u32) -> BOOL #c_call, add: BOOL) -> BOOL #foreign kernel32;
 
             on_ctrl_c :: (type: u32) -> BOOL #c_call {
@@ -2108,6 +2114,9 @@ main :: () {
             stdout_is_tty = GetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), *console_mode) != .FALSE;
             if stdout_is_tty {
                 SetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), console_mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+
+                original_console_output_cp = GetConsoleOutputCP();
+                SetConsoleOutputCP(CP_UTF8);
             }
         } else {
             #import "POSIX";
@@ -3270,20 +3279,20 @@ main :: () {
                         }
                     }
                     if matched {
-                        if ends_with(info.short_name, ".test.ts") 
-                        || ends_with(info.short_name, ".test.cts") 
-                        || ends_with(info.short_name, ".test.mts") 
+                        if ends_with(info.short_name, ".test.ts")
+                        || ends_with(info.short_name, ".test.cts")
+                        || ends_with(info.short_name, ".test.mts")
 
-                        || ends_with(info.short_name, ".test.js") 
-                        || ends_with(info.short_name, ".test.cjs") 
-                        || ends_with(info.short_name, ".test.mjs") 
+                        || ends_with(info.short_name, ".test.js")
+                        || ends_with(info.short_name, ".test.cjs")
+                        || ends_with(info.short_name, ".test.mjs")
 
-                        || ends_with(info.short_name, ".spec.ts") 
-                        || ends_with(info.short_name, ".spec.cts") 
-                        || ends_with(info.short_name, ".spec.mts") 
+                        || ends_with(info.short_name, ".spec.ts")
+                        || ends_with(info.short_name, ".spec.cts")
+                        || ends_with(info.short_name, ".spec.mts")
 
-                        || ends_with(info.short_name, ".spec.js") 
-                        || ends_with(info.short_name, ".spec.cjs") 
+                        || ends_with(info.short_name, ".spec.js")
+                        || ends_with(info.short_name, ".spec.cjs")
                         || ends_with(info.short_name, ".spec.mjs") {
                             test_files += 1;
                             defer write_builder(*output);
@@ -3318,11 +3327,11 @@ main :: () {
 
                             result: napi_value;
                             napi_check(napi_call_function(
-                                napi_env_instance, 
-                                napi_global, 
-                                testa_run_fn, 
-                                1, 
-                                *absolute_file_path_string, 
+                                napi_env_instance,
+                                napi_global,
+                                testa_run_fn,
+                                1,
+                                *absolute_file_path_string,
                                 *result
                             ));
                             node_perform_microtask_checkpoint(node_setup);
@@ -3506,7 +3515,7 @@ main :: () {
                                     } else if (to_microseconds(duration) > 0) {
                                         print(*output, " %μs\n", to_microseconds(duration));
                                     } else if (to_nanoseconds(duration) > 0) {
-                                        // I don't think this can ever be the case, but just to be safe, this is literally a catch-all for 
+                                        // I don't think this can ever be the case, but just to be safe, this is literally a catch-all for
                                         // the time a modern computer can take to do a single operation
                                         print(*output, " %ns\n", to_nanoseconds(duration));
                                     }
@@ -3721,6 +3730,11 @@ main :: () {
         release(*test_pool);
         release(*pool);
         report_memory_leaks();
+    }
+
+    #if OS == .WINDOWS {
+        #import "Windows";
+        if original_console_output_cp SetConsoleOutputCP(original_console_output_cp);
     }
 
     if atomic_load(*interruption) == .SIGINT {
