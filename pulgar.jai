@@ -93,7 +93,7 @@ Eq_Frame :: struct {
     parent: *Eq_Frame;
 }
 
-deep_equal :: (a: napi_value, b: napi_value, parent: *Eq_Frame) -> bool {
+deep_equal :: (a: napi_value, b: napi_value, parent: *Eq_Frame, strict := false) -> bool {
     try :: (status: napi_status) #expand {
         if status != .ok {
             if status != .pending_exception {
@@ -173,6 +173,15 @@ deep_equal :: (a: napi_value, b: napi_value, parent: *Eq_Frame) -> bool {
     try(napi_open_handle_scope(napi_env_instance, *scope));
     defer napi_check(napi_close_handle_scope(napi_env_instance, scope));
 
+    if strict {
+        a_prototype, b_prototype: napi_value;
+        try(napi_get_prototype(napi_env_instance, a, *a_prototype));
+        try(napi_get_prototype(napi_env_instance, b, *b_prototype));
+        if v8_same_object(a_prototype, b_prototype) == 0 {
+            return false;
+        }
+    }
+
     if kind == .ARRAY {
         a_length, b_length: u32;
         try(napi_get_array_length(napi_env_instance, a, *a_length));
@@ -181,10 +190,18 @@ deep_equal :: (a: napi_value, b: napi_value, parent: *Eq_Frame) -> bool {
             return false;
         }
         for 0..cast(s64) a_length - 1 {
+            if strict {
+                a_has, b_has: bool;
+                try(napi_has_element(napi_env_instance, a, xx it, *a_has));
+                try(napi_has_element(napi_env_instance, b, xx it, *b_has));
+                if a_has != b_has {
+                    return false;
+                }
+            }
             a_element, b_element: napi_value;
             try(napi_get_element(napi_env_instance, a, xx it, *a_element));
             try(napi_get_element(napi_env_instance, b, xx it, *b_element));
-            if !deep_equal(a_element, b_element, *frame) {
+            if !deep_equal(a_element, b_element, *frame, strict) {
                 return false;
             }
         }
@@ -246,7 +263,7 @@ deep_equal :: (a: napi_value, b: napi_value, parent: *Eq_Frame) -> bool {
             if b_type != .napi_undefined {
                 a_field: napi_value;
                 try(napi_get_named_property(napi_env_instance, a, it.data, *a_field));
-                if !deep_equal(a_field, b_field, *frame) {
+                if !deep_equal(a_field, b_field, *frame, strict) {
                     return false;
                 }
             }
@@ -268,7 +285,7 @@ deep_equal :: (a: napi_value, b: napi_value, parent: *Eq_Frame) -> bool {
         try(napi_get_property(napi_env_instance, b, key, *value));
         type: napi_valuetype;
         try(napi_typeof(napi_env_instance, value, *type));
-        if type != .napi_undefined {
+        if strict || type != .napi_undefined {
             b_defined += 1;
         }
     }
@@ -280,7 +297,7 @@ deep_equal :: (a: napi_value, b: napi_value, parent: *Eq_Frame) -> bool {
         try(napi_get_property(napi_env_instance, a, key, *a_value));
         a_type: napi_valuetype;
         try(napi_typeof(napi_env_instance, a_value, *a_type));
-        if a_type == .napi_undefined {
+        if !strict && a_type == .napi_undefined {
             continue;
         }
         a_defined += 1;
@@ -290,7 +307,7 @@ deep_equal :: (a: napi_value, b: napi_value, parent: *Eq_Frame) -> bool {
         try(napi_get_property(napi_env_instance, b, key, *b_value));
         b_type: napi_valuetype;
         try(napi_typeof(napi_env_instance, b_value, *b_type));
-        if b_type == .napi_undefined {
+        if !strict && b_type == .napi_undefined {
             return false;
         }
         b_has_key: bool;
@@ -298,7 +315,7 @@ deep_equal :: (a: napi_value, b: napi_value, parent: *Eq_Frame) -> bool {
         if !b_has_key {
             return false;
         }
-        if !deep_equal(a_value, b_value, *frame) {
+        if !deep_equal(a_value, b_value, *frame, strict) {
             return false;
         }
     }
@@ -1990,6 +2007,14 @@ function isTypeScript(url) {
     return url.endsWith('.ts') || url.endsWith('.mts') || url.endsWith('.cts');
 }
 
+function isFile(url) {
+    try {
+        return fs.statSync(new URL(url)).isFile();
+    } catch {
+        return false;
+    }
+}
+
 function initializeImportMeta(meta, url) {
     meta.url = url;
     if (!url.startsWith('file:')) return;
@@ -2012,8 +2037,16 @@ async function linker(specifier, referencingModule) {
         url = new URL(specifier, referencingModule.identifier).href;
     }
 
-    if (url.startsWith('file:') && url.endsWith('.js') && !fs.existsSync(new URL(url))) {
-        url = url.slice(0, -3) + '.ts';
+    if (url.startsWith('file:') && !isFile(url)) {
+        let base = url;
+        if (url.endsWith('.js')) base = url.slice(0, -3);
+        if (url.endsWith('/')) base = url.slice(0, -1);
+        for (const candidate of [base + '.ts', base + '.js', base + '/index.ts', base + '/index.js']) {
+            if (isFile(candidate)) {
+                url = candidate;
+                break;
+            }
+        }
     }
 
     let mod = cache.get(url);
@@ -2299,6 +2332,45 @@ main :: () {
                 return null;
             }
             register_assertion("toEqual", to_equal, not_to_equal);
+
+            to_strict_equal :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    actual: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *actual));
+                    argc: u64 = 1;
+                    expected: napi_value;
+                    napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
+
+                    if !deep_equal(actual, expected, null, strict=true) {
+                        text := sprint("expected % to strictly equal %", inspect(actual), inspect(expected));
+                        text_value, error: napi_value;
+                        napi_try(napi_create_string_utf8(env, text.data, xx text.count, *text_value));
+                        napi_try(napi_create_error(env, null, text_value, *error));
+                        napi_try(napi_set_named_property(env, error, "actual".data, actual));
+                        napi_try(napi_set_named_property(env, error, "expected".data, expected));
+                        napi_try(napi_throw(env, error));
+                    }
+                }
+                return null;
+            }
+
+            not_to_strict_equal :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+                push_context test_context {
+                    assert(test_name_breadcrumb.count > 0);
+                    actual: napi_value;
+                    napi_try(napi_get_named_property(env, matcher, "actual".data, *actual));
+                    argc: u64 = 1;
+                    expected: napi_value;
+                    napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
+
+                    if deep_equal(actual, expected, null, strict=true) {
+                        throw_error("expected % not to strictly equal %", inspect(actual), inspect(expected));
+                    }
+                }
+                return null;
+            }
+            register_assertion("toStrictEqual", to_strict_equal, not_to_strict_equal);
 
             to_be_null :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
                 push_context test_context {

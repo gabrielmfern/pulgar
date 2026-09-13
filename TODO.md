@@ -89,7 +89,7 @@ After launch:
 - [ ] `expect.toBeNaN(): void`
 - [ ] `expect.toBeCloseTo(expected: number, numDigits?: number): void`
 - [ ] `expect.toHaveProperty(keyPath: string | string[], value?: unknown): void`
-- [ ] `expect.toStrictEqual(expected: unknown): void`
+- [x] `expect.toStrictEqual(expected: unknown): void`
 - [ ] `expect.toMatch(pattern: string | RegExp): void`
 - [ ] `expect.toMatchObject(object: object | array): void`
 - [ ] `expect.resolves: Assertion`
