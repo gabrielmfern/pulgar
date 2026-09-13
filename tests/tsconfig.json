@@ -5,6 +5,7 @@
     "moduleResolution": "nodenext",
     "strict": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "erasableSyntaxOnly": true,
     "types": ["node"]
   },

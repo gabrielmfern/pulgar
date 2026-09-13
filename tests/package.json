@@ -4,5 +4,8 @@
     "typescript": "^7.0.2",
     "vitest": "latest"
   },
-  "type": "module"
+  "type": "module",
+  "imports": {
+    "#ts-package": "./ts-package/index.ts"
+  }
 }

@@ -1939,18 +1939,17 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 import { createHook } from 'node:async_hooks';
 
-
 // TODO: this is always on for now. it should be off in CI (detect via env
 // vars like CI, GITHUB_ACTIONS) and controllable by a boolean cli flag that
 // bypasses any heuristic.
 const births = new Map();
 createHook({
-  init(asyncId, type) {
-    births.set(asyncId, { type, stack: new Error().stack });
-  },
-  destroy(asyncId) {
-    births.delete(asyncId);
-  },
+    init(asyncId, type) {
+        births.set(asyncId, { type, stack: new Error().stack });
+    },
+    destroy(asyncId) {
+        births.delete(asyncId);
+    },
 }).enable();
 
 globalThis.__testa_stack = asyncId => births.get(asyncId)?.stack ?? '';
@@ -1963,82 +1962,85 @@ process.stderr.write('');
 
 const cache = new Map();
 const hostImport = new vm.Script('specifier => import(specifier)', {
-  importModuleDynamically: vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER,
+    importModuleDynamically: vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER,
 }).runInThisContext();
 const { resolve } = await hostImport('data:text/javascript,export const resolve = import.meta.resolve');
 
 function isTypeScript(url) {
-  return url.endsWith('.ts') || url.endsWith('.mts') || url.endsWith('.cts');
+    return url.endsWith('.ts') || url.endsWith('.mts') || url.endsWith('.cts');
 }
 
 function initializeImportMeta(meta, url) {
-  meta.url = url;
-  if (!url.startsWith('file:')) return;
-  const filename = fileURLToPath(url);
-  meta.filename = filename;
-  meta.dirname = dirname(filename);
-  meta.dir = meta.dirname;
-}
-
-async function loadModule(url) {
-  let mod = cache.get(url);
-  if (mod) return mod;
-  let code = fs.readFileSync(new URL(url), 'utf8');
-  if (isTypeScript(url)) code = stripTypeScriptTypes(code);
-  if (url.startsWith('file:')) {
+    meta.url = url;
+    if (!url.startsWith('file:')) return;
     const filename = fileURLToPath(url);
-    code = `const __filename = ${JSON.stringify(filename)}, __dirname = ${JSON.stringify(dirname(filename))};` + code;
-  }
-  mod = new vm.SourceTextModule(code, {
-    identifier: url,
-    importModuleDynamically: linker,
-    initializeImportMeta: meta => initializeImportMeta(meta, url),
-  });
-  cache.set(url, mod);
-  await mod.link(linker);
-  await mod.evaluate();
-  return mod;
+    meta.filename = filename;
+    meta.dirname = dirname(filename);
+    meta.dir = meta.dirname;
 }
 
-async function loadBuiltin(specifier) {
-  let mod = cache.get(specifier);
-  if (mod) return mod;
-  const exports = process.getBuiltinModule(specifier);
-  mod = new vm.SyntheticModule([...Object.keys(exports), 'default'], function() {
-    for (const key of Object.keys(exports)) this.setExport(key, exports[key]);
-    this.setExport('default', exports);
-  });
-  cache.set(specifier, mod);
-  await mod.link(linker);
-  await mod.evaluate();
-  return mod;
+async function linker(specifier, referencingModule) {
+    const vitest = specifier == 'vitest';
+    const builtin = isBuiltin(specifier);
+    const relative = specifier.startsWith('./') || specifier.startsWith('../') || specifier.startsWith('/');
+    const bare = !vitest && !builtin && !relative && !URL.canParse(specifier);
+
+    let url = specifier;
+    if (bare) {
+        url = resolve(specifier, referencingModule.identifier);
+    } else if (!vitest && !builtin) {
+        url = new URL(specifier, referencingModule.identifier).href;
+    }
+
+    if (url.startsWith('file:') && url.endsWith('.js') && !fs.existsSync(new URL(url))) {
+        url = url.slice(0, -3) + '.ts';
+    }
+
+    let mod = cache.get(url);
+    if (mod) return mod;
+
+    if (vitest || builtin || (bare && !isTypeScript(url))) {
+        let exports;
+        if (vitest) {
+            exports = { expect, describe, it, test, beforeAll, afterAll, beforeEach, afterEach };
+        } else if (builtin) {
+            const node = process.getBuiltinModule(specifier);
+            exports = { ...node, default: node };
+        } else {
+            exports = await hostImport(url);
+        }
+        mod = new vm.SyntheticModule(Object.keys(exports), function() {
+            for (const key of Object.keys(exports)) this.setExport(key, exports[key]);
+        });
+    } else {
+        let code = fs.readFileSync(new URL(url), 'utf8');
+        if (isTypeScript(url)) code = stripTypeScriptTypes(code);
+        if (url.startsWith('file:')) {
+            const filename = fileURLToPath(url);
+            code = `const __filename = ${JSON.stringify(filename)}, __dirname = ${JSON.stringify(dirname(filename))};` + code;
+        }
+        mod = new vm.SourceTextModule(code, {
+            identifier: url,
+            importModuleDynamically: load,
+            initializeImportMeta: meta => initializeImportMeta(meta, url),
+        });
+    }
+
+    cache.set(url, mod);
+    return mod;
 }
 
-async function loadPackage(url) {
-  let mod = cache.get(url);
-  if (mod) return mod;
-  const namespace = await hostImport(url);
-  mod = new vm.SyntheticModule(Object.keys(namespace), function() {
-    for (const key of Object.keys(namespace)) this.setExport(key, namespace[key]);
-  });
-  cache.set(url, mod);
-  await mod.link(linker);
-  await mod.evaluate();
-  return mod;
+async function load(specifier, referencingModule) {
+    const mod = await linker(specifier, referencingModule);
+    if (mod.status == 'unlinked') await mod.link(linker);
+    if (mod.status == 'linked') await mod.evaluate();
+    return mod;
 }
 
-function isBare(specifier) {
-  if (specifier.startsWith('./') || specifier.startsWith('../') || specifier.startsWith('/')) return false;
-  return !URL.canParse(specifier);
-}
-
-function linker(specifier, referencingModule) {
-  if (isBuiltin(specifier)) return loadBuiltin(specifier);
-  if (isBare(specifier)) return loadPackage(resolve(specifier, referencingModule.identifier));
-  return loadModule(new URL(specifier, referencingModule.identifier).href);
-}
-
-globalThis.__testa_run = path => loadModule(pathToFileURL(path).href);
+globalThis.__testa_run = path => {
+    const url = pathToFileURL(path).href;
+    return load(url, { identifier: url });
+};
 MJS
 
 main :: () {
