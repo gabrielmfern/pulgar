@@ -1459,6 +1459,23 @@ expect :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
     return matcher;
 }
 
+expect_unreachable :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+    push_context test_context {
+        argc: u64 = 1;
+        message: napi_value;
+        napi_try(napi_get_cb_info(env, info, *argc, *message, null, null));
+
+        type: napi_valuetype;
+        napi_try(napi_typeof(env, message, *type));
+        if type == .napi_string {
+            napi_check(napi_throw_error(env, null, string_from_napi_value(message).data));
+        } else {
+            napi_check(napi_throw_error(env, null, "unreachable".data));
+        }
+    }
+    return null;
+}
+
 Pending :: struct {
     name: string;
     callback: napi_ref;
@@ -1960,6 +1977,9 @@ stripTypeScriptTypes('const x: number = 1')
 process.stdout.write('');
 process.stderr.write('');
 
+const expectTypeOf = new Proxy(function () {}, { get: () => expectTypeOf, apply: () => expectTypeOf });
+globalThis.expectTypeOf = expectTypeOf;
+
 const cache = new Map();
 const hostImport = new vm.Script('specifier => import(specifier)', {
     importModuleDynamically: vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER,
@@ -2002,7 +2022,7 @@ async function linker(specifier, referencingModule) {
     if (vitest || builtin || (bare && !isTypeScript(url))) {
         let exports;
         if (vitest) {
-            exports = { expect, describe, it, test, beforeAll, afterAll, beforeEach, afterEach };
+            exports = { expect, expectTypeOf, describe, it, test, beforeAll, afterAll, beforeEach, afterEach };
         } else if (builtin) {
             const node = process.getBuiltinModule(specifier);
             exports = { ...node, default: node };
@@ -3157,6 +3177,10 @@ main :: () {
                 // assertions
                 napi_check(napi_create_function(napi_env_instance, "expect".data, "expect".count, expect, null, *expect_fn));
                 napi_check(napi_set_named_property(napi_env_instance, napi_global, "expect".data, expect_fn));
+
+                unreachable_fn: napi_value;
+                napi_check(napi_create_function(napi_env_instance, "unreachable".data, "unreachable".count, expect_unreachable, null, *unreachable_fn));
+                napi_check(napi_set_named_property(napi_env_instance, expect_fn, "unreachable".data, unreachable_fn));
             }
 
             {

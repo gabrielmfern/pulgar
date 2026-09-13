@@ -76,3 +76,9 @@ declare function expect<T>(received: T): {
   not: Assertions<T>;
 } & Assertions<T>;
 
+declare namespace expect {
+  function unreachable(message?: string): never;
+}
+
+declare function expectTypeOf<T>(value?: T): any;
+
