@@ -2270,7 +2270,13 @@ main :: () {
                     napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
 
                     if !object_is(actual, expected) {
-                        throw_error("expected % to be %", inspect(actual), inspect(expected));
+                        text := sprint("expected % to be %", inspect(actual), inspect(expected));
+                        text_value, error: napi_value;
+                        napi_try(napi_create_string_utf8(env, text.data, xx text.count, *text_value));
+                        napi_try(napi_create_error(env, null, text_value, *error));
+                        napi_try(napi_set_named_property(env, error, "actual".data, actual));
+                        napi_try(napi_set_named_property(env, error, "expected".data, expected));
+                        napi_try(napi_throw(env, error));
                     }
                 }
                 return null;
@@ -2286,7 +2292,13 @@ main :: () {
                     napi_try(napi_get_cb_info(env, info, *argc, *expected, null, null));
 
                     if object_is(actual, expected) {
-                        throw_error("expected % not to be %", inspect(actual), inspect(expected));
+                        text := sprint("expected % not to be %", inspect(actual), inspect(expected));
+                        text_value, error: napi_value;
+                        napi_try(napi_create_string_utf8(env, text.data, xx text.count, *text_value));
+                        napi_try(napi_create_error(env, null, text_value, *error));
+                        napi_try(napi_set_named_property(env, error, "actual".data, actual));
+                        napi_try(napi_set_named_property(env, error, "expected".data, expected));
+                        napi_try(napi_throw(env, error));
                     }
                 }
                 return null;
