@@ -2,6 +2,7 @@
   "name": "pulgar",
   "version": "0.0.9",
   "description": "A test runner with Node.js embedded",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/gabrielmfern/pulgar.git"

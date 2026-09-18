@@ -154,6 +154,11 @@ build :: () {
             }
             _, version, _ := split_from_left(after, #char "\"");
 
+            if !copy_file("LICENSE", tprint("%/LICENSE", dist_dir)) {
+                compiler_set_workspace_status(.FAILED);
+                return;
+            }
+
             exe := ifx OS == .WINDOWS then "pulgar.exe" else "pulgar";
 
             package := tprint(#string JSON
@@ -161,13 +166,14 @@ build :: () {
   "name": "@pulgar/%1-%2",
   "version": "%3",
   "description": "%1 %2 binary for pulgar",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/gabrielmfern/pulgar.git"
   },
   "os": ["%1"],
   "cpu": ["%2"],
-  "files": ["%4", "%5"]
+  "files": ["%4", "%5", "LICENSE"]
 }
 JSON, platform, arch, version, exe, libnode_lib);
             if !write_entire_file(tprint("%/package.json", dist_dir), package) {
