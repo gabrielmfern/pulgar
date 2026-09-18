@@ -2,3 +2,24 @@
 	path = vendor/node
 	url = https://github.com/gabrielmfern/node
 	branch = testa-24
+[submodule "bench/pathe"]
+	path = bench/pathe
+	url = https://github.com/unjs/pathe
+[submodule "bench/scule"]
+	path = bench/scule
+	url = https://github.com/unjs/scule
+[submodule "bench/defu"]
+	path = bench/defu
+	url = https://github.com/unjs/defu
+[submodule "bench/ms"]
+	path = bench/ms
+	url = https://github.com/vercel/ms
+[submodule "bench/valibot"]
+	path = bench/valibot
+	url = https://github.com/fabian-hiller/valibot
+[submodule "bench/date-fns"]
+	path = bench/date-fns
+	url = https://github.com/date-fns/date-fns
+[submodule "bench/es-toolkit-upstream"]
+	path = bench/es-toolkit
+	url = https://github.com/toss/es-toolkit
