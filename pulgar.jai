@@ -3393,6 +3393,10 @@ main :: () {
                         || ends_with(info.short_name, ".test.cts")
                         || ends_with(info.short_name, ".test.mts")
 
+                        || ends_with(info.short_name, ".test-d.ts")
+                        || ends_with(info.short_name, ".test-d.cts")
+                        || ends_with(info.short_name, ".test-d.mts")
+
                         || ends_with(info.short_name, ".test.js")
                         || ends_with(info.short_name, ".test.cjs")
                         || ends_with(info.short_name, ".test.mjs")
@@ -3400,6 +3404,10 @@ main :: () {
                         || ends_with(info.short_name, ".spec.ts")
                         || ends_with(info.short_name, ".spec.cts")
                         || ends_with(info.short_name, ".spec.mts")
+
+                        || ends_with(info.short_name, ".spec-d.ts")
+                        || ends_with(info.short_name, ".spec-d.cts")
+                        || ends_with(info.short_name, ".spec-d.mts")
 
                         || ends_with(info.short_name, ".spec.js")
                         || ends_with(info.short_name, ".spec.cjs")
