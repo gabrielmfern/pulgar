@@ -1,12 +1,12 @@
 # pulgar
 
-```sh
-npx pulgar@latest
-```
-
 a small js test runner with Node.js embedded in a single, simple binary
 
 ![pulgar running the ms test suite](docs/demo.gif)
+
+```sh
+npx pulgar@latest
+```
 
 ## why?
 
@@ -15,9 +15,6 @@ and I also wanted to learn jai so things coincided into this project.
 
 vitest is fast, but it's not as fast as the computer can go. javascript itself is not as fast as the computer can 
 go, but even with the bottleneck that javascript can be, current test runners are not bottlenecked by the test code. 
-
-I am yet to properly and rigorously benchmark this test runner against other test runners in real projects, 
-since pulgar's feature-set is quite small. 
 
 ## usage
 
@@ -47,6 +44,7 @@ there is no config file.
 - typescript, through node's type stripping. so no enums, namespaces, decorators or jsx
 - extensionless relative imports resolve to `.ts`, `.js` or an `index` file
 - `import.meta.url`, `import.meta.dirname`, `__filename` and `__dirname`
+- supports linux x64, macOS silicon and win32 x64 
 
 see [TODO.md](TODO.md).
 
