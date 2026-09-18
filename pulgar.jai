@@ -2025,15 +2025,15 @@ function initializeImportMeta(meta, url) {
 }
 
 async function linker(specifier, referencingModule) {
-    const vitest = specifier == 'vitest';
+    const otherTestRunner = specifier == 'vitest' || specifier == '@jest/globals';
     const builtin = isBuiltin(specifier);
     const relative = specifier.startsWith('./') || specifier.startsWith('../') || specifier.startsWith('/');
-    const bare = !vitest && !builtin && !relative && !URL.canParse(specifier);
+    const bare = !otherTestRunner && !builtin && !relative && !URL.canParse(specifier);
 
     let url = specifier;
     if (bare) {
         url = resolve(specifier, referencingModule.identifier);
-    } else if (!vitest && !builtin) {
+    } else if (!otherTestRunner && !builtin) {
         url = new URL(specifier, referencingModule.identifier).href;
     }
 
@@ -2052,9 +2052,9 @@ async function linker(specifier, referencingModule) {
     let mod = cache.get(url);
     if (mod) return mod;
 
-    if (vitest || builtin || (bare && !isTypeScript(url))) {
+    if (otherTestRunner || builtin || (bare && !isTypeScript(url))) {
         let exports;
-        if (vitest) {
+        if (otherTestRunner) {
             exports = { expect, expectTypeOf, describe, it, test, beforeAll, afterAll, beforeEach, afterEach };
         } else if (builtin) {
             const node = process.getBuiltinModule(specifier);
