@@ -13,10 +13,12 @@
 	url = https://github.com/unjs/defu
 [submodule "bench/ms"]
 	path = bench/ms
-	url = https://github.com/vercel/ms
+	url = https://github.com/gabrielmfern/ms
+	branch = pulgar
 [submodule "bench/valibot"]
 	path = bench/valibot
-	url = https://github.com/fabian-hiller/valibot
+	url = https://github.com/gabrielmfern/valibot
+	branch = pulgar
 [submodule "bench/date-fns"]
 	path = bench/date-fns
 	url = https://github.com/date-fns/date-fns
