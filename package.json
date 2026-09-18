@@ -1,6 +1,6 @@
 {
   "name": "pulgar",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "description": "A test runner with Node.js embedded",
   "repository": {
     "type": "git",
@@ -15,8 +15,8 @@
     "pulgar.d.ts"
   ],
   "optionalDependencies": {
-    "@pulgar/linux-x64": "0.0.8",
-    "@pulgar/darwin-arm64": "0.0.8",
-    "@pulgar/win32-x64": "0.0.8"
+    "@pulgar/linux-x64": "0.0.9",
+    "@pulgar/darwin-arm64": "0.0.9",
+    "@pulgar/win32-x64": "0.0.9"
   }
 }
