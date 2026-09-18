@@ -126,7 +126,7 @@ After launch:
 - [ ] `assertType<T>(value: T): void`
 - [ ] `expectTypeOf(value: T): ExpectTypeOf<T>`
 - [ ] `expect.anything(): AsymmetricMatcher`
-- [ ] `expect.any(constructor: Function): AsymmetricMatcher`
+- [x] `expect.any(constructor: Function): AsymmetricMatcher`
 - [ ] `expect.arrayContaining(array: unknown[]): AsymmetricMatcher`
 - [ ] `expect.objectContaining(object: object): AsymmetricMatcher`
 - [ ] `expect.stringContaining(string: string): AsymmetricMatcher`

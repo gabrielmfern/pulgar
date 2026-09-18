@@ -38,6 +38,10 @@ noop_fn: napi_value;
 testa_run_fn: napi_value;
 string_includes_fn: napi_value;
 array_constructor: napi_value;
+any_class: napi_value;
+any_prototype: napi_value;
+builtin_constructors: [7]napi_value;
+builtin_constructor_names :: string.["String", "Number", "Boolean", "BigInt", "Symbol", "Function", "Object"];
 array_from_fn: napi_value;
 node_env: *node_environment;
 node_setup: *node_common_environment_setup;
@@ -93,6 +97,48 @@ Eq_Frame :: struct {
     parent: *Eq_Frame;
 }
 
+is_any :: (value: napi_value) -> bool {
+    if v8_value_kind_of(value) != .OBJECT {
+        return false;
+    }
+    prototype: napi_value;
+    napi_check(napi_get_prototype(napi_env_instance, value, *prototype));
+    return v8_same_object(prototype, any_prototype) != 0;
+}
+
+any_matches :: (value: napi_value, any: napi_value) -> bool {
+    sample: napi_value;
+    napi_check(napi_get_named_property(napi_env_instance, any, "sample".data, *sample));
+    kind := v8_value_kind_of(value);
+    for builtin_constructors {
+        if v8_same_object(sample, it) {
+            if it_index == {
+                case 0; return kind == .STRING  || kind == .STRING_OBJECT;
+                case 1; return kind == .NUMBER  || kind == .NUMBER_OBJECT;
+                case 2; return kind == .BOOLEAN || kind == .BOOLEAN_OBJECT;
+                case 3; return kind == .BIGINT  || kind == .BIGINT_OBJECT;
+                case 4; return kind == .SYMBOL  || kind == .SYMBOL_OBJECT;
+                case 5; return kind == .FUNCTION;
+                case 6;
+                    type: napi_valuetype;
+                    napi_check(napi_typeof(napi_env_instance, value, *type));
+                    return type == .napi_object || type == .napi_null;
+            }
+        }
+    }
+    is_instance: bool;
+    status := napi_instanceof(napi_env_instance, value, sample, *is_instance);
+    if status != .ok {
+        if status != .pending_exception {
+            info: *napi_extended_error_info;
+            napi_check(napi_get_last_error_info(napi_env_instance, *info));
+            napi_check(napi_throw_error(napi_env_instance, null, info.error_message));
+        }
+        return false;
+    }
+    return is_instance;
+}
+
 deep_equal :: (a: napi_value, b: napi_value, parent: *Eq_Frame, strict := false) -> bool {
     try :: (status: napi_status) #expand {
         if status != .ok {
@@ -103,6 +149,13 @@ deep_equal :: (a: napi_value, b: napi_value, parent: *Eq_Frame, strict := false)
             }
             `return false;
         }
+    }
+
+    if is_any(b) {
+        return any_matches(a, b);
+    }
+    if is_any(a) {
+        return any_matches(b, a);
     }
 
     if object_is(a, b) {
@@ -766,6 +819,19 @@ stringify :: (builder: *String_Builder, value: napi_value, indent: int, depth: i
             }
         }
         append(builder, "}");
+        return;
+    }
+
+    if is_any(value) {
+        sample: napi_value;
+        napi_check(napi_get_named_property(napi_env_instance, value, "sample".data, *sample));
+        if v8_value_kind_of(sample) == .FUNCTION {
+            print_to_builder(builder, "Any<%>", string_from_napi_value(v8_function_name(sample)));
+        } else {
+            append(builder, "Any<");
+            stringify(builder, sample, indent, depth, parent, called_to_json, min);
+            append(builder, ">");
+        }
         return;
     }
 
@@ -1474,6 +1540,26 @@ expect :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
         napi_try(napi_set_named_property(env, matcher, "actual".data, actual));
     }
     return matcher;
+}
+
+expect_any :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
+    push_context test_context {
+        argc: u64 = 1;
+        sample: napi_value;
+        napi_try(napi_get_cb_info(env, info, *argc, *sample, null, null));
+
+        type: napi_valuetype;
+        napi_try(napi_typeof(env, sample, *type));
+        if type == .napi_undefined {
+            napi_check(napi_throw_type_error(env, null, "any() expects to be passed a constructor function. Please pass one or use anything() to match any object.".data));
+            return null;
+        }
+
+        any: napi_value;
+        napi_try(napi_new_instance(env, any_class, 0, null, *any));
+        napi_try(napi_set_named_property(env, any, "sample".data, sample));
+        return any;
+    }
 }
 
 expect_unreachable :: (env: napi_env, info: napi_callback_info) -> napi_value #c_call {
@@ -3265,6 +3351,15 @@ main :: () {
                 unreachable_fn: napi_value;
                 napi_check(napi_create_function(napi_env_instance, "unreachable".data, "unreachable".count, expect_unreachable, null, *unreachable_fn));
                 napi_check(napi_set_named_property(napi_env_instance, expect_fn, "unreachable".data, unreachable_fn));
+
+                napi_check(napi_define_class(napi_env_instance, "Any".data, "Any".count, noop, null, 0, null, *any_class));
+                napi_check(napi_get_named_property(napi_env_instance, any_class, "prototype".data, *any_prototype));
+                any_fn: napi_value;
+                napi_check(napi_create_function(napi_env_instance, "any".data, "any".count, expect_any, null, *any_fn));
+                napi_check(napi_set_named_property(napi_env_instance, expect_fn, "any".data, any_fn));
+                for builtin_constructor_names {
+                    napi_check(napi_get_named_property(napi_env_instance, napi_global, it.data, *builtin_constructors[it_index]));
+                }
             }
 
             {

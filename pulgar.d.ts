@@ -79,6 +79,7 @@ declare function expect<T>(received: T): {
 
 declare namespace expect {
   function unreachable(message?: string): never;
+  function any(constructor: unknown): any;
 }
 
 declare function expectTypeOf<T>(value?: T): any;
